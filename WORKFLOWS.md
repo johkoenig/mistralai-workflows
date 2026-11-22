@@ -90,7 +90,7 @@ Splits a PDF into parts and names them; the parts stay in the folder of the orig
 {"target_path": "/folder/document.pdf", "split_at": [2, 4], "plan_splits": true, "titles": null, "name_parts": true, "model": "mistral-small-latest", "apply_changes": true, "connector": ""}
 ```
 
-- `split_at`: page numbers (1-based) to split AFTER; always wins over planning.
+- `split_at`: page numbers (1-based) AFTER which the PDF is cut — the given page stays in the previous part; always wins over planning. Example: `[2, 4]` on 8 pages yields parts 1-2, 3-4, 5-8. The same semantics are stated in the input schema (field description of `split_at`) and in the workflow description. A dry run (`apply_changes: false`) returns `action: "planned"` with the exact `pages` range of every part before anything is written.
 - `plan_splits` (default `true`): AI planning of the split points; `false` without `split_at` is an error.
 - `titles`: explicit part names (count must match); disable AI naming.
 - `name_parts` (default `true`): AI naming; `false` => `<stem> Teil-N.pdf`.

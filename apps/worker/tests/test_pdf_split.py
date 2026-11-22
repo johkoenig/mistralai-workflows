@@ -628,3 +628,16 @@ def test_all_activities_present():
     assert callable(pdf_split.load_naming_rules)
     assert callable(pdf_split.resolve_plan)
     assert callable(pdf_split.part_filename)
+
+
+class TestSplitAtDocumentation:
+    def test_input_schema_documents_cut_after_semantics(self):
+        prop = PdfSplitInput.model_json_schema()["properties"]["split_at"]
+        description = prop.get("description", "")
+        assert "AFTER" in description
+        assert "1-2, 3-4, 5-8" in description
+
+    def test_module_docstring_documents_cut_after_example(self):
+        doc = pdf_split.__doc__ or ""
+        assert "AFTER which to split" in doc
+        assert "1-2, 3-4, 5-8" in doc

@@ -20,5 +20,6 @@ Highlights:
 - AGPL §13 (Netzwerknutzung): wird diese Software als Netzwerkdienst angeboten, ist der Quellcode in diesem Repository verfügbar.
 - Die Dokumentation bezeichnet das Projekt durchgängig als `mistralai-workflows`.
 - Bugfix: Die LLM-Aktivitäten `name-document` und `plan-split` senden jetzt `top_p=1` zusammen mit `temperature=0.0`; die Chat-API lehnt Greedy-Sampling mit einem anderen `top_p` ab (HTTP 400 `invalid_request_greedy_sampling`).
+- `pdf-split`: Die Cut-After-Semantik von `split_at` steht jetzt in der Feldbeschreibung des Input-Schemas, in der Workflow-Beschreibung und in WORKFLOWS.de.md — `split_at` nennt die Seitenzahlen, NACH denen geschnitten wird; die angegebene Seite bleibt im vorherigen Teil (Beispiel: `[2, 4]` bei 8 Seiten ergibt Teile 1-2, 3-4, 5-8).
 
 Die Git-Historie wurde bei der Neuerstellung des Repositories für die Veröffentlichung auf einen einzigen Commit squashed; frühere PR-Referenzen lösen nicht mehr auf.

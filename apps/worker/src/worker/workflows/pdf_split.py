@@ -14,7 +14,8 @@ Start input:
 - name_parts (default true): AI naming of the parts. With false the
   parts are called "<stem> Part-N.pdf".
 - model: LLM for the planning (default mistral-small-latest)
-- apply_changes: dry run reads and checks everything, writes nothing
+- apply_changes: dry run reads and checks everything, writes nothing, and
+  reports the planned parts with their exact page ranges ("parts[].pages")
 - connector: name of the file connector from FILE_CONNECTOR_NAMES (empty = default);
   with several active Nextcloud connectors the caller selects the target connector
 
@@ -85,7 +86,16 @@ class PdfSplitInput(pydantic.BaseModel):
     """Start input of the workflow; the fields are explained in the module docstring."""
 
     target_path: str
-    split_at: list[int] | None = None
+    split_at: list[int] | None = pydantic.Field(
+        default=None,
+        description=(
+            "Page numbers (1-based) AFTER which the PDF is cut; the given page "
+            "stays in the previous part. Example: [2, 4] on 8 pages yields "
+            "parts 1-2, 3-4, 5-8. An explicit split_at always wins over AI "
+            "planning. A dry run (apply_changes=false) reports the page range "
+            "of every part before anything is written."
+        ),
+    )
     plan_splits: bool = True
     titles: list[str] | None = None
     name_parts: bool = True
@@ -381,7 +391,11 @@ async def split_file(
     workflow_description=(
         "Splits a PDF into parts: at explicitly given page numbers or "
         "automatically planned by an LLM from the OCR texts (split points and "
-        "part titles). Naming rules may live as AGENTS.md in the folder. "
+        "part titles). split_at lists the page numbers (1-based) AFTER which "
+        "the PDF is cut - the given page stays in the previous part (example: "
+        "[2, 4] on 8 pages yields parts 1-2, 3-4, 5-8). A dry run "
+        "(apply_changes=false) reports the page range of every part before "
+        "anything is written. Naming rules may live as AGENTS.md in the folder. "
         "When unsure, the workflow asks back without writing. Parts stay in the "
         "original file's folder, the original is secured under "
         ".originals/pdf-split/. Manual start only."

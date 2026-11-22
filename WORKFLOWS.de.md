@@ -90,7 +90,7 @@ Teilt eine PDF in Teile und benennt sie; Teile bleiben im Ordner der Originaldat
 {"target_path": "/Ordner/Dokument.pdf", "split_at": [2, 4], "plan_splits": true, "titles": null, "name_parts": true, "model": "mistral-small-latest", "apply_changes": true, "connector": ""}
 ```
 
-- `split_at`: Seitenzahlen (1-basiert), NACH denen getrennt wird; gewinnt immer über die Planung.
+- `split_at`: Seitenzahlen (1-basiert), NACH denen getrennt wird — die angegebene Seite bleibt im vorherigen Teil; gewinnt immer über die Planung. Beispiel: `[2, 4]` bei 8 Seiten ergibt die Teile 1-2, 3-4, 5-8. Dieselbe Semantik steht in der Input-Schema-Beschreibung des Feldes `split_at` und in der Workflow-Beschreibung. Ein Dry-Run (`apply_changes: false`) liefert `action: "planned"` mit dem genauen `pages`-Bereich jedes Teils, bevor etwas geschrieben wird.
 - `plan_splits` (Standard `true`): AI-Planung der Trennstellen; `false` ohne `split_at` ist ein Fehler.
 - `titles`: explizite Teilnamen (Anzahl muss passen); schalten die AI-Benennung ab.
 - `name_parts` (Standard `true`): AI-Benennung; `false` => `<Stamm> Teil-N.pdf`.
