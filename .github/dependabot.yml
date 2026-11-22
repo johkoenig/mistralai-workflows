@@ -17,8 +17,15 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-  # Worker image base
+  # Worker image base. Major bumps of the python base image are ignored on
+  # purpose: requires-python in pyproject.toml caps the supported interpreter,
+  # and the CI gate check_docker_base.py fails such PRs anyway. A Python major
+  # upgrade must be a deliberate PR that bumps Dockerfile + requires-python +
+  # .python-version together.
   - package-ecosystem: "docker"
     directory: "/deploy/docker"
     schedule:
       interval: "weekly"
+    ignore:
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major"]

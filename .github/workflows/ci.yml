@@ -2,9 +2,9 @@ name: CI
 
 # The single quality gate for this repository (AGENTS.md): runs on every pull request and on every
 # push to main. A PR may be self-approved (private solo repo), but it is never merged before this
-# run is green. All quality checks are blocking gates (enforcement phase): lock sync, ruff lint,
-# ruff format, semgrep, strict mypy, all test suites with a coverage floor. The outcomes are
-# published as one upserted PR comment.
+# run is green. All quality checks are blocking gates (enforcement phase): lock sync, docker-base
+# compatibility, ruff lint, ruff format, semgrep, strict mypy, all test suites with a coverage
+# floor. The outcomes are published as one upserted PR comment.
 on:
   pull_request:
   push:
@@ -47,6 +47,10 @@ jobs:
       - name: Sync the workspace from the committed lock (gate)
         id: sync
         run: bash tools/uv.sh sync --all-packages --frozen 2>&1 | tee .ci-reports/sync.log; test ${PIPESTATUS[0]} -eq 0
+
+      - name: Docker base image compatible with requires-python (gate)
+        id: docker_base
+        run: bash tools/uv.sh run --frozen python .github/scripts/check_docker_base.py 2>&1 | tee .ci-reports/docker-base.log; test ${PIPESTATUS[0]} -eq 0
 
       - name: Ruff lint (gate)
         id: ruff
