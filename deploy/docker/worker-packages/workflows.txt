@@ -1,0 +1,5 @@
+# System toolchain for the scanner-sort workflow: OCRmyPDF (pip) drives these.
+# tesseract-ocr-all carries the deu/eng/fra/ita/spa language packs and OSD data.
+ghostscript
+tesseract-ocr-all
+jbig2dec

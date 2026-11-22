@@ -1,0 +1,133 @@
+name: CI
+
+# The single quality gate for this repository (AGENTS.md): runs on every pull request and on every
+# push to main. A PR may be self-approved (private solo repo), but it is never merged before this
+# run is green. All quality checks are blocking gates (enforcement phase): lock sync, ruff lint,
+# ruff format, semgrep, strict mypy, all test suites with a coverage floor. The outcomes are
+# published as one upserted PR comment.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  quality:
+    name: tests, lint, type-check, coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Prepare the CI report directory
+        run: mkdir -p .ci-reports
+
+      - name: Install the system tools the workflows capability drives (OCRmyPDF)
+        id: apt
+        run: |
+          set -e
+          set -o pipefail
+          sudo apt-get update 2>&1 | tee .ci-reports/apt.log
+          (sudo apt-get install -y --no-install-recommends ghostscript tesseract-ocr-all jbig2dec pngquant ||
+            sudo apt-get install -y --no-install-recommends ghostscript tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng jbig2dec pngquant) 2>&1 | tee -a .ci-reports/apt.log
+
+      - name: Sync the workspace from the committed lock (gate)
+        id: sync
+        run: bash tools/uv.sh sync --all-packages --frozen 2>&1 | tee .ci-reports/sync.log; test ${PIPESTATUS[0]} -eq 0
+
+      - name: Ruff lint (gate)
+        id: ruff
+        run: |
+          bash tools/uv.sh tool run ruff@0.17.6 check --output-format=concise . 2>&1 | tee .ci-reports/ruff.log
+          rc=${PIPESTATUS[0]}
+          bash tools/uv.sh tool run ruff@0.17.6 check --fix --diff . > .ci-reports/ruff-fixdiff.log 2>&1 || true
+          exit $rc
+
+      - name: Ruff formatting (gate)
+        id: ruff_format
+        run: bash tools/uv.sh tool run ruff@0.17.6 format --check . 2>&1 | tee .ci-reports/ruff-format.log; test ${PIPESTATUS[0]} -eq 0
+
+      - name: Semgrep with the capability's workflow rules (gate)
+        id: semgrep
+        run: >
+          bash tools/uv.sh tool run semgrep@1.176.0
+          --config .agents/skills/capability-workflows/scripts/linting/rules
+          --metrics=off apps/worker/src/worker/workflows 2>&1 | tee .ci-reports/semgrep.log;
+          test ${PIPESTATUS[0]} -eq 0
+
+      - name: mypy strict (gate)
+        id: mypy
+        run: >
+          bash tools/uv.sh run --all-packages --frozen --with 'mypy==2.4.1' mypy
+          apps/worker/src packages/py/cli/src packages/py/env/src packages/py/utils/src
+          --strict --namespace-packages --show-error-codes
+          2>&1 | tee .ci-reports/mypy.log;
+          test ${PIPESTATUS[0]} -eq 0
+
+      - name: Worker tests with coverage, floor 55% (gate)
+        id: worker_tests
+        run: >
+          bash tools/uv.sh run --directory apps/worker --frozen --with pytest-cov
+          python -m pytest --cov=worker --cov-fail-under=55 -q 2>&1 | tee .ci-reports/worker-tests.log;
+          test ${PIPESTATUS[0]} -eq 0
+
+      - name: CLI package tests (gate)
+        id: cli_tests
+        run: bash tools/uv.sh run --directory packages/py/cli --frozen pytest -q 2>&1 | tee .ci-reports/cli-tests.log; test ${PIPESTATUS[0]} -eq 0
+
+      - name: Utils package tests (gate)
+        id: utils_tests
+        run: bash tools/uv.sh run --directory packages/py/utils --frozen pytest -q 2>&1 | tee .ci-reports/utils-tests.log; test ${PIPESTATUS[0]} -eq 0
+
+      - name: Tool versions for the report
+        run: |
+          {
+            bash tools/uv.sh tool run ruff@0.17.6 --version
+            bash tools/uv.sh run --all-packages --frozen --with 'mypy==2.4.1' mypy --version
+            bash tools/uv.sh --version
+          } > .ci-reports/versions.log 2>&1 || true
+
+      - name: Publish the quality report to the PR
+        if: always() && github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+          APT: ${{ steps.apt.outcome }}
+          SYNC: ${{ steps.sync.outcome }}
+          RUFF: ${{ steps.ruff.outcome }}
+          RUFF_FORMAT: ${{ steps.ruff_format.outcome }}
+          SEMGREP: ${{ steps.semgrep.outcome }}
+          MYPY: ${{ steps.mypy.outcome }}
+          WORKER_TESTS: ${{ steps.worker_tests.outcome }}
+          CLI_TESTS: ${{ steps.cli_tests.outcome }}
+          UTILS_TESTS: ${{ steps.utils_tests.outcome }}
+        run: python3 .github/scripts/quality_report.py
+
+      - name: Publish the quality report as the job summary on main
+        if: always() && github.event_name == 'push'
+        env:
+          REPOSITORY: ${{ github.repository }}
+          APT: ${{ steps.apt.outcome }}
+          SYNC: ${{ steps.sync.outcome }}
+          RUFF: ${{ steps.ruff.outcome }}
+          RUFF_FORMAT: ${{ steps.ruff_format.outcome }}
+          SEMGREP: ${{ steps.semgrep.outcome }}
+          MYPY: ${{ steps.mypy.outcome }}
+          WORKER_TESTS: ${{ steps.worker_tests.outcome }}
+          CLI_TESTS: ${{ steps.cli_tests.outcome }}
+          UTILS_TESTS: ${{ steps.utils_tests.outcome }}
+        run: python3 .github/scripts/quality_report.py
