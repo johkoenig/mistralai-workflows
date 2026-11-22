@@ -3,9 +3,9 @@ name: AI review (Mistral)
 # Advisory only: posts one review comment per PR, never approves, never fails the build.
 # Security notes for this now-public repository:
 # - pull_request (NOT pull_request_target): fork PRs never receive secrets.
-# - The job checks out the BASE commit, so code from the PR itself is never executed.
-# - Only PRs from authors with write access (OWNER/MEMBER/COLLABORATOR) are reviewed;
-#   the script re-checks author_association from the event payload.
+# - Only PRs from authors with write access (OWNER/MEMBER/COLLABORATOR) run at all;
+#   the script re-checks author_association from the event payload. Drafts/forks/bots skip.
+# - continue-on-error: an advisory reviewer must never redden a PR.
 permissions: {}
 
 on:
@@ -18,6 +18,7 @@ concurrency:
 
 jobs:
   review:
+    continue-on-error: true
     permissions:
       contents: read
       pull-requests: write
@@ -28,10 +29,7 @@ jobs:
       github.event.pull_request.author_association == 'COLLABORATOR')
     runs-on: ubuntu-latest
     steps:
-      # Base commit on purpose: the PR's own code must never run here.
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.base.sha }}
 
       - name: Run AI review
         run: python3 .github/scripts/ai_review.py

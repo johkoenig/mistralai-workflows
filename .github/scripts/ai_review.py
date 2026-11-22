@@ -6,8 +6,9 @@ Mistral; the answer is posted as exactly one marker comment per PR (updated on
 re-runs), so reviews never stack. The review is advisory only: the script never
 submits an approving review and never fails the workflow run. Like
 quality_report.py it uses only the standard library, so the runner's stock
-python3 suffices. The workflow checks out the BASE commit, so code from the PR
-itself is never executed.
+python3 suffices. The workflow uses the pull_request trigger (never
+pull_request_target) and only runs for authors with write access, so fork PRs
+never see secrets and only trusted code runs.
 """
 
 from __future__ import annotations
