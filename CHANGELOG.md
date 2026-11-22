@@ -19,5 +19,6 @@ Highlights:
 - Dry runs via `apply_changes: false`; heartbeats on OCR/download/upload detect a crashed worker within ~2 minutes and retry the activity.
 - AGPL §13 (network use): if this software is offered as a network service, the source is available at this repository.
 - The documentation refers to the project consistently as `mistralai-workflows`.
+- Bug fix: the LLM activities `name-document` and `plan-split` now send `top_p=1` together with `temperature=0.0`; the Chat API rejects greedy sampling with any other `top_p` (HTTP 400 `invalid_request_greedy_sampling`).
 
 The git history was squashed to a single commit when the repository was recreated for publication; earlier PR references no longer resolve.

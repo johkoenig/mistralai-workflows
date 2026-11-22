@@ -434,6 +434,7 @@ async def name_document(
         messages=messages,
         response_format={"type": "json_object"},
         temperature=0.0,
+        top_p=1,
     )
     content = cast("AssistantMessage", response.choices[0].message).content
     try:
@@ -585,6 +586,7 @@ async def plan_split(
         messages=messages,
         response_format={"type": "json_object"},
         temperature=0.0,
+        top_p=1,
     )
     return parse_split_plan(
         cast("AssistantMessage", response.choices[0].message).content,
