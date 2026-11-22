@@ -56,9 +56,11 @@ jobs:
         id: ruff
         run: |
           bash tools/uv.sh tool run ruff@0.17.6 check --output-format=concise . 2>&1 | tee .ci-reports/ruff.log
-          rc=${PIPESTATUS[0]}
-          bash tools/uv.sh tool run ruff@0.17.6 check --fix --diff . > .ci-reports/ruff-fixdiff.log 2>&1 || true
-          exit $rc
+          exit ${PIPESTATUS[0]}
+
+      - name: Ruff autofix diff (onboarding helper, report-only)
+        id: ruff_fixdiff
+        run: bash tools/uv.sh tool run ruff@0.17.6 check --fix --diff . > .ci-reports/ruff-fixdiff.log 2>&1 || true
 
       - name: Ruff formatting (gate)
         id: ruff_format
@@ -112,7 +114,9 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           APT: ${{ steps.apt.outcome }}
           SYNC: ${{ steps.sync.outcome }}
+          DOCKER_BASE: ${{ steps.docker_base.outcome }}
           RUFF: ${{ steps.ruff.outcome }}
+          RUFF_FIXDIFF: ${{ steps.ruff_fixdiff.outcome }}
           RUFF_FORMAT: ${{ steps.ruff_format.outcome }}
           SEMGREP: ${{ steps.semgrep.outcome }}
           MYPY: ${{ steps.mypy.outcome }}
@@ -127,7 +131,9 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           APT: ${{ steps.apt.outcome }}
           SYNC: ${{ steps.sync.outcome }}
+          DOCKER_BASE: ${{ steps.docker_base.outcome }}
           RUFF: ${{ steps.ruff.outcome }}
+          RUFF_FIXDIFF: ${{ steps.ruff_fixdiff.outcome }}
           RUFF_FORMAT: ${{ steps.ruff_format.outcome }}
           SEMGREP: ${{ steps.semgrep.outcome }}
           MYPY: ${{ steps.mypy.outcome }}
