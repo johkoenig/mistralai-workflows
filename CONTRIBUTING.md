@@ -43,7 +43,7 @@ CI (`.github/workflows/ci.yml`) is the gate and runs on every PR and every push 
 | Lock integrity | `sync --all-packages --frozen` |
 | Lint | `tool run ruff check .` |
 | Formatting | `tool run ruff@0.17.6 format --check .` |
-| Workflow lint | `tool run semgrep@1.176.0 --config .agents/skills/capability-workflows/scripts/linting/rules --metrics=off apps/worker/src/worker/workflows` |
+| Workflow lint | `ulimit -Hs 2929688 && tool run semgrep@1.176.0 --config .agents/skills/capability-workflows/scripts/linting/rules --metrics=off apps/worker/src/worker/workflows` (ulimit cap required on Python 3.15, see AGENTS.md) |
 | Type-check | `run --all-packages --frozen --with mypy==2.4.1 mypy apps/worker/src packages/py/cli/src packages/py/env/src packages/py/utils/src --strict --namespace-packages --show-error-codes` |
 | Tests | worker: `run --directory apps/worker --frozen --with pytest-cov python -m pytest --cov=worker --cov-fail-under=55`, plus the `packages/py/cli` and `packages/py/utils` suites |
 

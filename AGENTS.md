@@ -24,7 +24,7 @@ Every change must pass (CI runs exactly these):
 | Docker base image | `run --frozen python .github/scripts/check_docker_base.py` (Dockerfile `FROM python:X.Y` must satisfy `requires-python` and match `.python-version`) |
 | Lint | `tool run ruff check .` |
 | Formatting | `tool run ruff@0.17.6 format --check .` *(blocking)* |
-| Workflow-specific lint | `tool run semgrep@1.176.0 --config .agents/skills/capability-workflows/scripts/linting/rules --metrics=off apps/worker/src/worker/workflows` |
+| Workflow-specific lint | `ulimit -Hs 2929688 && tool run semgrep@1.176.0 --config .agents/skills/capability-workflows/scripts/linting/rules --metrics=off apps/worker/src/worker/workflows` (the ulimit cap is required on Python 3.15: semgrep otherwise derives a ~6 EiB stack limit from the unlimited RLIMIT_STACK and semgrep-core segfaults, semgrep#11979) |
 | Type-check | `run --all-packages --frozen --with mypy==2.4.1 mypy ...src dirs... --strict ...` *(blocking)* |
 | Tests | `run --directory apps/worker --frozen --with pytest-cov python -m pytest --cov=worker --cov-fail-under=55` (coverage floor 55%, to be ratcheted upward with intent), plus the `packages/py/cli` and `packages/py/utils` test suites |
 
