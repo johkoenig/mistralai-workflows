@@ -1,0 +1,40 @@
+name: PR enable auto-merge (autocomplete)
+
+# Queues auto-merge on EVERY pull request targeting main (opened/reopened/
+# ready_for_review/synchronize), so a PR merges by itself once the ruleset's
+# requirements are met: required status checks green + the human approval +
+# branch up to date. Auto-merge is only a queue - it cannot approve and cannot
+# merge on its own, so the "at least 1 human review" rule in the main ruleset
+# stays the effective gate. The synchronize trigger re-queues after every push.
+#
+# Security: pull_request (NOT pull_request_target) - fork PRs run with a read-only
+# GITHUB_TOKEN, so the queue step just fails gracefully there (continue-on-error).
+# The PR number comes only from the trusted event payload. Minimal permissions.
+# Requires "Allow auto-merge" in repo settings (General -> Pull requests) and an
+# allowed merge method in the main ruleset (currently: merge commits only).
+permissions: {}
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize]
+
+concurrency:
+  group: pr-enable-autocomplete-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  autocomplete:
+    if: github.event.pull_request.base.ref == 'main'
+    continue-on-error: true
+    permissions:
+      contents: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge on the PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          gh pr merge --auto "${{ github.event.pull_request.number }}"
+          --repo "$GITHUB_REPOSITORY"
+          || echo "auto-merge already enabled, not allowed (fork/read-only token) or not mergeable yet - fine"
