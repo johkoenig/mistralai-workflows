@@ -34,7 +34,11 @@ jobs:
       - name: Enable auto-merge on the PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: >
-          gh pr merge --auto "${{ github.event.pull_request.number }}"
-          --repo "$GITHUB_REPOSITORY"
-          || echo "auto-merge already enabled, not allowed (fork/read-only token) or not mergeable yet - fine"
+        run: |
+          # gh requires an explicit merge method in non-interactive mode;
+          # --merge matches the ruleset's allowed_merge_methods.
+          if gh pr merge --auto --merge "${{ github.event.pull_request.number }}" --repo "$GITHUB_REPOSITORY"; then
+            echo "auto-merge queued on PR ${{ github.event.pull_request.number }}"
+          else
+            echo "::warning::could not queue auto-merge (already enabled, fork read-only token, or not mergeable yet) - enable it manually on the PR"
+          fi
