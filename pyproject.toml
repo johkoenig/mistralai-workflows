@@ -2,7 +2,7 @@
 name = "github__johkoenig__mistralai-workflows"
 version = "0.0.1"
 license = "AGPL-3.0-only"
-requires-python = ">=3.12,<3.15"
+requires-python = ">=3.12,<3.16"
 dependencies = [
     "mistralai-capabilities-backend-workflows==0.1.71",
     "mistralai-capabilities-deployment-apps==0.1.71",

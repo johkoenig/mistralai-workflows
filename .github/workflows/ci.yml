@@ -68,7 +68,12 @@ jobs:
 
       - name: Semgrep with the capability's workflow rules (gate)
         id: semgrep
+        # Python 3.15 reads an unlimited RLIMIT_STACK as 2**64-1, so semgrep derives hard/3
+        # (~6 EiB) as semgrep-core's stack limit and the OCaml engine segfaults (exit -11,
+        # semgrep/semgrep#11979). Capping the hard limit makes hard/3 land on the same 1 GiB
+        # fallback that Python <= 3.14 uses (semgrep 1.176.0..1.186.0 all lack the guard).
         run: >
+          ulimit -Hs 2929688 &&
           bash tools/uv.sh tool run semgrep@1.176.0
           --config .agents/skills/capability-workflows/scripts/linting/rules
           --metrics=off apps/worker/src/worker/workflows 2>&1 | tee .ci-reports/semgrep.log;
