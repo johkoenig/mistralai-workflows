@@ -18,5 +18,6 @@ Highlights:
 - Originale bleiben immer erhalten (`.originals/<Workflow>/`, `merged/`, `<Name>_orig.pdf`); die Workflows überschreiben und löschen nie etwas.
 - Dry-Runs über `apply_changes: false`; Heartbeats bei OCR/Download/Upload erkennen einen abgestürzten Worker binnen ~2 Minuten und wiederholen die Aktivität.
 - AGPL §13 (Netzwerknutzung): wird diese Software als Netzwerkdienst angeboten, ist der Quellcode in diesem Repository verfügbar.
+- Die Dokumentation bezeichnet das Projekt durchgängig als `mistralai-workflows`.
 
 Die Git-Historie wurde bei der Neuerstellung des Repositories für die Veröffentlichung auf einen einzigen Commit squashed; frühere PR-Referenzen lösen nicht mehr auf.

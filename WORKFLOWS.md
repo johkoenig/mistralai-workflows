@@ -2,7 +2,7 @@
 
 # Workflow Reference
 
-Complete reference of the four workflows of the `mistral-automation` deployment: purpose, start input, result shape, and examples. LLM-generated names, titles and follow-up questions follow the language of the document (the naming prompts instruct the model accordingly). Conventions and architecture are in [ARCHITECTURE.md](ARCHITECTURE.md), usage and deployment operations in [README.md](README.md) and [OPERATIONS.md](OPERATIONS.md). Every start input also accepts an optional `connector` field: the name of a file connector from `FILE_CONNECTOR_NAMES` (empty = default), so one call can target any of the configured connectors.
+Complete reference of the four workflows of the `mistralai-workflows` deployment: purpose, start input, result shape, and examples. LLM-generated names, titles and follow-up questions follow the language of the document (the naming prompts instruct the model accordingly). Conventions and architecture are in [ARCHITECTURE.md](ARCHITECTURE.md), usage and deployment operations in [README.md](README.md) and [OPERATIONS.md](OPERATIONS.md). Every start input also accepts an optional `connector` field: the name of a file connector from `FILE_CONNECTOR_NAMES` (empty = default), so one call can target any of the configured connectors.
 
 All workflows:
 

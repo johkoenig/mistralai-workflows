@@ -18,5 +18,6 @@ Highlights:
 - Originals are always kept (`.originals/<workflow>/`, `merged/`, `<name>_orig.pdf`); nothing is ever overwritten or deleted by the workflows.
 - Dry runs via `apply_changes: false`; heartbeats on OCR/download/upload detect a crashed worker within ~2 minutes and retry the activity.
 - AGPL §13 (network use): if this software is offered as a network service, the source is available at this repository.
+- The documentation refers to the project consistently as `mistralai-workflows`.
 
 The git history was squashed to a single commit when the repository was recreated for publication; earlier PR references no longer resolve.

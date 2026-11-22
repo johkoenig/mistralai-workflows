@@ -2,15 +2,15 @@
 
 # Betrieb (Operations)
 
-Deployment und Betriebsregeln für `mistral-automation`. Bedienung der Workflows: [README.md](README.de.md) und [WORKFLOWS.md](WORKFLOWS.de.md); Architektur: [ARCHITECTURE.md](ARCHITECTURE.de.md).
+Deployment und Betriebsregeln für `mistralai-workflows`. Bedienung der Workflows: [README.md](README.de.md) und [WORKFLOWS.md](WORKFLOWS.de.md); Architektur: [ARCHITECTURE.md](ARCHITECTURE.de.md).
 
 ## Deployment
 
-Ein Repository, ein Managed Deployment. Konkret gerundete Parameter des Deployments `mistral-automation`:
+Ein Repository, ein Managed Deployment. Konkret gerundete Parameter des Deployments `mistralai-workflows`:
 
 | Parameter | Wert |
 |---|---|
-| Deployment-Name | `mistral-automation` |
+| Deployment-Name | `mistralai-workflows` |
 | GitHub-Repository | `https://github.com/johkoenig/mistralai-workflows` |
 | Build-Context | `.` |
 | Dockerfile | `deploy/docker/Dockerfile.worker` |

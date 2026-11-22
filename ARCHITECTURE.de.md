@@ -3,7 +3,7 @@
 # Architektur
 
 Dieses Repository enthaelt die Mistral-Workflows der Scan- und PDF-Automatisierung.
-Ein Repository (`mistralai-workflows`), ein Managed Deployment (`mistral-automation`), mehrere Workflows.
+Ein Repository (`mistralai-workflows`), ein Managed Deployment (`mistralai-workflows`), mehrere Workflows.
 Details zur Bedienung stehen in der README, die vollstaendige Workflow-Referenz
 mit Ergebnis- und Action-Glossar in WORKFLOWS.md, Deployment-Betrieb in
 OPERATIONS.md. Hier sind Konventionen und Arbeitsteilung festgehalten.
@@ -116,7 +116,7 @@ pdf-split kennt zwei AI-Schritte, beide einzeln abschaltbar:
   Textebene) liegt in worker/ocr.py und wird importiert, nie dupliziert.
   Rotate und Deskew sind Optionen eines einzigen ocrmypdf-Aufrufs; separate
   Durchlaeufe waeren Qualitaetsverlust ohne Nutzen.
-- Repositorium heisst `mistralai-workflows`, Deployment `mistral-automation`; Workflow-Namen
+- Repositorium heisst `mistralai-workflows`, Deployment `mistralai-workflows`; Workflow-Namen
   folgen dem Schema <Domae>-<Aktion> (pdf-scan-inbox-triage, pdf-merge-duplex,
   pdf-ocr, pdf-split).
 - Manage Deployments: kein eigenes Hochskalieren, Parallelitaet innerhalb eines

@@ -4,7 +4,7 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/johkoenig/mistralai-workflows/ci.yml?branch=main&label=CI)](https://github.com/johkoenig/mistralai-workflows/actions/workflows/ci.yml)
 
-Mistral-Workflows fuer Scanner- und PDF-Automatisierung auf dem eigenen Datei-Speicher (Nextcloud). Ein Repository (`mistralai-workflows`), ein Managed Deployment (`mistral-automation`), vier Workflows, die auf den Dokumenten **im eigenen Speicher** laufen — nichts verlaesst die Nextcloud, ausser den OCR-/Benennungs-Prompts an die Mistral-API.
+Mistral-Workflows fuer Scanner- und PDF-Automatisierung auf dem eigenen Datei-Speicher (Nextcloud). Ein Repository (`mistralai-workflows`), ein Managed Deployment (`mistralai-workflows`), vier Workflows, die auf den Dokumenten **im eigenen Speicher** laufen — nichts verlaesst die Nextcloud, ausser den OCR-/Benennungs-Prompts an die Mistral-API.
 
 | Workflow | Was er tut |
 |---|---|
