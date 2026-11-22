@@ -7,7 +7,7 @@ dependencies = [
     "env",
     "mistralai>=3.6.0",
     "mistralai-workflows[mistralai]>=3.17.1",
-    "pydantic>=2.14.1",
+    "pydantic>=2.14.4",
     "structlog>=25.5.0",
     "ocrmypdf>=17.14.2",
     "pypdf>=7.1.1",
