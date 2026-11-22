@@ -24,6 +24,7 @@ MAX_LOG_LINES = 2000
 SECTIONS = [
     ("APT", "system tools for OCRmyPDF", "apt.log"),
     ("SYNC", "uv sync from the committed lock", "sync.log"),
+    ("DOCKER_BASE", "docker base image vs requires-python (gate)", "docker-base.log"),
     ("RUFF", "ruff lint (gate)", "ruff.log"),
     ("RUFF_FIXDIFF", "ruff autofix diff (onboarding helper)", "ruff-fixdiff.log"),
     ("RUFF_FORMAT", "ruff formatting (gate)", "ruff-format.log"),
