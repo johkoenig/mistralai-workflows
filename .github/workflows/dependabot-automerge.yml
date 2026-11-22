@@ -7,9 +7,11 @@ name: Dependabot auto-merge
 # rebase push. Requires "Allow auto-merge" in the repo settings (General ->
 # Pull requests) and an allowed merge method in the main ruleset (merge).
 #
-# Security: pull_request (NOT pull_request_target), actor-gated to dependabot[bot],
-# minimal permissions; the PR number comes from the trusted event payload. The job
-# is continue-on-error: it must never redden a PR.
+# Security: pull_request (NOT pull_request_target), gated on the PR AUTHOR from the
+# event payload (dependabot's login is app/dependabot, and github.actor can be the
+# human who last pushed/synchronized - actor alone is not a reliable gate), plus the
+# dependabot/ branch prefix. Minimal permissions; the PR number comes from the
+# trusted event payload. The job is continue-on-error: it must never redden a PR.
 permissions: {}
 
 on:
@@ -22,7 +24,10 @@ concurrency:
 
 jobs:
   automerge:
-    if: github.actor == 'dependabot[bot]'
+    if: >-
+      startsWith(github.event.pull_request.head.ref, 'dependabot/') &&
+      (github.event.pull_request.user.login == 'app/dependabot' ||
+      github.event.pull_request.user.login == 'dependabot[bot]')
     continue-on-error: true
     permissions:
       contents: read
