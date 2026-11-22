@@ -1,0 +1,38 @@
+name: Dependabot auto-merge
+
+# Queues auto-merge on every Dependabot PR (opened/reopened/synchronize), so the
+# PR merges by itself once the required status checks are green and a human has
+# approved it. Dependabot's rebase-strategy: auto keeps the PRs up to date with
+# main in the meantime; the synchronize trigger re-queues auto-merge after each
+# rebase push. Requires "Allow auto-merge" in the repo settings (General ->
+# Pull requests) and an allowed merge method in the main ruleset (merge).
+#
+# Security: pull_request (NOT pull_request_target), actor-gated to dependabot[bot],
+# minimal permissions; the PR number comes from the trusted event payload. The job
+# is continue-on-error: it must never redden a PR.
+permissions: {}
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+concurrency:
+  group: dependabot-automerge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  automerge:
+    if: github.actor == 'dependabot[bot]'
+    continue-on-error: true
+    permissions:
+      contents: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge on the Dependabot PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          gh pr merge --auto "${{ github.event.pull_request.number }}"
+          --repo "$GITHUB_REPOSITORY"
+          || echo "auto-merge already enabled or not mergeable yet - fine"

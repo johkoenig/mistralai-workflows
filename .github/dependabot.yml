@@ -6,17 +6,21 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+    # Keep Dependabot PRs mergeable on their own: rebase onto main automatically.
+    rebase-strategy: "auto"
   # JS/TS workspace: root package.json + bun.lock (bun workspaces)
   - package-ecosystem: "bun"
     directory: "/"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+    rebase-strategy: "auto"
   # CI actions in .github/workflows
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    rebase-strategy: "auto"
   # Worker image base. Major bumps of the python base image are ignored on
   # purpose: requires-python in pyproject.toml caps the supported interpreter,
   # and the CI gate check_docker_base.py fails such PRs anyway. A Python major
@@ -26,6 +30,7 @@ updates:
     directory: "/deploy/docker"
     schedule:
       interval: "weekly"
+    rebase-strategy: "auto"
     ignore:
       - dependency-name: "python"
         update-types: ["version-update:semver-major"]
