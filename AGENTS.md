@@ -21,6 +21,7 @@ Every change must pass (CI runs exactly these):
 | Gate | Command (run via `bash tools/uv.sh ...`) |
 | --- | --- |
 | Lock integrity | `sync --all-packages --frozen` |
+| Docker base image | `run --frozen python .github/scripts/check_docker_base.py` (Dockerfile `FROM python:X.Y` must satisfy `requires-python` and match `.python-version`) |
 | Lint | `tool run ruff check .` |
 | Formatting | `tool run ruff@0.17.6 format --check .` *(blocking)* |
 | Workflow-specific lint | `tool run semgrep@1.176.0 --config .agents/skills/capability-workflows/scripts/linting/rules --metrics=off apps/worker/src/worker/workflows` |
