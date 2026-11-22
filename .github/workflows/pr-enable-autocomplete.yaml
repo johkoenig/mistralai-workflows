@@ -9,7 +9,10 @@ name: PR enable auto-merge (autocomplete)
 #
 # Security: pull_request (NOT pull_request_target) - fork PRs run with a read-only
 # GITHUB_TOKEN, so the queue step just fails gracefully there (continue-on-error).
-# The PR number comes only from the trusted event payload. Minimal permissions.
+# The PR number comes only from the trusted event payload. The job needs
+# contents: write + pull-requests: write - the enablePullRequestAutoMerge
+# mutation behind `gh pr merge --auto` is rejected with "Resource not
+# accessible by integration" when contents is only read.
 # Requires "Allow auto-merge" in repo settings (General -> Pull requests) and an
 # allowed merge method in the main ruleset (currently: merge commits only).
 permissions: {}
@@ -27,14 +30,18 @@ jobs:
     if: github.event.pull_request.base.ref == 'main'
     continue-on-error: true
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - name: Enable auto-merge on the PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: >
-          gh pr merge --auto "${{ github.event.pull_request.number }}"
-          --repo "$GITHUB_REPOSITORY"
-          || echo "auto-merge already enabled, not allowed (fork/read-only token) or not mergeable yet - fine"
+        run: |
+          # gh requires an explicit merge method in non-interactive mode;
+          # --merge matches the ruleset's allowed_merge_methods.
+          if gh pr merge --auto --merge "${{ github.event.pull_request.number }}" --repo "$GITHUB_REPOSITORY"; then
+            echo "auto-merge queued on PR ${{ github.event.pull_request.number }}"
+          else
+            echo "::warning::could not queue auto-merge (already enabled, fork read-only token, or not mergeable yet) - enable it manually on the PR"
+          fi
