@@ -6,7 +6,7 @@ dependencies = [
     "utils",
     "env",
     "mistralai>=3.6.0",
-    "mistralai-workflows[mistralai]>=3.17.1",
+    "mistralai-workflows[mistralai]>=3.20.0",
     "pydantic>=2.14.4",
     "structlog>=25.5.0",
     "ocrmypdf>=17.14.2",
