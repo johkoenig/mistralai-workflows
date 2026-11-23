@@ -23,6 +23,11 @@ Per run, first folder level only:
    reliable date) via LLM from the OCR text, in the document's language.
 5. Rename only. Everything uncertain (pair assignment, content, date, naming)
    stays unchanged. This workflow never merges, archives or deletes anything.
+
+Backups: before a scan is modified in any way (OCR overwrite or rename), a
+copy of its current state is parked under
+<folder>/.originals/pdf-scan-inbox-triage/<scan name> (counter suffix on
+collision, never overwrites).
 """
 
 from __future__ import annotations
@@ -56,6 +61,8 @@ from worker.pdf_ops import (
     merge_texts,
     name_document,
     nc_call,
+    originals_dir,
+    park_original,
     pick_url,
     unique_filename,
 )
@@ -163,7 +170,15 @@ async def analyze_scan_file(
                 ocr_done = True
                 info = read_text_info(out_path)
 
+        backup: str | None = None
         if ocr_done and apply_changes:
+            # The upload overwrites the scan in place: park the pre-OCR
+            # original under .originals/pdf-scan-inbox-triage/ first.
+            backup = await park_original(
+                nc,
+                entry["path"],
+                originals_dir(os.path.dirname(entry["path"]), "pdf-scan-inbox-triage"),
+            )
             replacement = await nc_call(
                 nc,
                 "files_checkout",
@@ -192,10 +207,27 @@ async def analyze_scan_file(
             "page_count": info["page_count"],
             "has_text": info["has_text"],
             "ocr_done": ocr_done,
+            "backup": backup,
             "text": "\n".join(info["pages"])[:TEXT_SNIPPET_CHARS],
         }
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
+
+
+@workflows.activity(
+    name="backup-scan-file",
+    start_to_close_timeout=timedelta(minutes=5),
+    retry_policy_max_attempts=2,
+)
+async def backup_scan_file(from_path: str, connector: str = "") -> dict[str, Any]:
+    """Parks a copy of the scan under .originals/pdf-scan-inbox-triage/ before it is renamed."""
+    nc = file_client(connector)
+    backup = await park_original(
+        nc,
+        from_path,
+        originals_dir(os.path.dirname(from_path), "pdf-scan-inbox-triage"),
+    )
+    return {"from": from_path, "backup": backup}
 
 
 @workflows.activity(
@@ -334,12 +366,18 @@ class PdfScanInboxTriageWorkflow:
                         }
                     )
                     continue
+                for f in files:
+                    if not f.get("backup"):
+                        f["backup"] = (await backup_scan_file(f["path"], connector))[
+                            "backup"
+                        ]
                 await rename_scan_file(files[0]["path"], target_path, connector)
                 actions.append(
                     {
                         "action": "renamed",
                         "files": names,
                         "to": target_path,
+                        "backups": [f["backup"] for f in files],
                         "ocr": files[0]["ocr_done"],
                         "pages": files[0]["page_count"],
                         "confidence": naming["confidence"],
@@ -368,8 +406,19 @@ class PdfScanInboxTriageWorkflow:
                 if not input.apply_changes:
                     actions.append({"action": "planned_pair", **pair_action})
                     continue
+                for f in files:
+                    if not f.get("backup"):
+                        f["backup"] = (await backup_scan_file(f["path"], connector))[
+                            "backup"
+                        ]
                 await rename_scan_file(files[0]["path"], front_to, connector)
                 await rename_scan_file(files[-1]["path"], back_to, connector)
-                actions.append({"action": "renamed_pair", **pair_action})
+                actions.append(
+                    {
+                        "action": "renamed_pair",
+                        "backups": [f["backup"] for f in files],
+                        **pair_action,
+                    }
+                )
 
         return {"folder": folder, "applied": input.apply_changes, "actions": actions}

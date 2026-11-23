@@ -258,6 +258,16 @@ def _make_fakes(record_path: str, scans: list[dict], naming: dict) -> list:
     async def fake_rules(folder: str, connector: str = "") -> dict[str, Any]:
         return {"rules": "", "source": None}
 
+    @workflows.activity(name="backup-scan-file")
+    async def fake_backup(from_path: str, connector: str = "") -> dict[str, Any]:
+        backup = (
+            f"SCANNER_INBOX/.originals/pdf-scan-inbox-triage/{from_path.split('/')[-1]}"
+        )
+        _write_calls(
+            record_path, {"activity": "backup", "from": from_path, "backup": backup}
+        )
+        return {"from": from_path, "backup": backup}
+
     @workflows.activity(name="rename-scan-file")
     async def fake_rename(
         from_path: str, to_path: str, connector: str = ""
@@ -267,7 +277,7 @@ def _make_fakes(record_path: str, scans: list[dict], naming: dict) -> list:
         )
         return {"from": from_path, "to": to_path}
 
-    return [fake_list, fake_analyze, fake_name, fake_rules, fake_rename]
+    return [fake_list, fake_analyze, fake_name, fake_rules, fake_backup, fake_rename]
 
 
 PAIR_TEXT = "Briefkopf Beispielpraxis Datum 18.11.2026 Rechnungsnummer 4711"
@@ -321,6 +331,24 @@ async def test_workflow_renames_single_and_pair_with_side_suffix(
     ]
     renames = [c for c in calls if c["activity"] == "rename"]
     assert len(renames) == 3
+    # every renamed scan is parked under .originals/pdf-scan-inbox-triage/ first
+    backups = [c for c in calls if c["activity"] == "backup"]
+    assert len(backups) == 3
+    assert all(
+        b["backup"].startswith("SCANNER_INBOX/.originals/pdf-scan-inbox-triage/")
+        for b in backups
+    )
+    for rename in renames:
+        backup_before = [
+            c
+            for c in calls
+            if c["activity"] == "backup" and c["from"] == rename["from"]
+        ]
+        assert backup_before, f"no backup before rename of {rename['from']}"
+        assert calls.index(backup_before[0]) < calls.index(rename)
+    assert actions["renamed"]["backups"] == [
+        "SCANNER_INBOX/.originals/pdf-scan-inbox-triage/Scan0000.pdf"
+    ]
     assert not any(c["activity"] == "merge" for c in calls)
     assert len([c for c in calls if c["activity"] == "analyze"]) == 3
 
@@ -351,7 +379,7 @@ async def test_workflow_leaves_uncertain_files_unchanged(
         json.loads(line)
         for line in Path(record_path).read_text(encoding="utf-8").splitlines()
     ]
-    assert not any(c["activity"] in ("rename", "merge") for c in calls)
+    assert not any(c["activity"] in ("rename", "backup", "merge") for c in calls)
 
 
 async def test_workflow_no_scans(temporal_env, tmp_path, monkeypatch):

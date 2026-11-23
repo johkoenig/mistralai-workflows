@@ -1,76 +1,62 @@
 > Sprache: Deutsch · [English version](README.md)
 
-# mistralai-workflows
+# mistralai-workflows: PDF-Scan-Triage, Duplex-Mischung, Split und OCR als Mistral-Workflows
 
 [![CI](https://img.shields.io/github/actions/workflow/status/johkoenig/mistralai-workflows/ci.yml?branch=main&label=CI)](https://github.com/johkoenig/mistralai-workflows/actions/workflows/ci.yml)
 
-Mistral-Workflows fuer Scanner- und PDF-Automatisierung auf dem eigenen Datei-Speicher (Nextcloud). Ein Repository (`mistralai-workflows`), ein Managed Deployment (`mistralai-workflows`), vier Workflows, die auf den Dokumenten **im eigenen Speicher** laufen — nichts verlaesst die Nextcloud, ausser den OCR-/Benennungs-Prompts an die Mistral-API.
+Ein Repository, ein Managed Deployment in deinem Mistral-Workspace, vier Workflows, die auf deinen Dokumenten **in deinem eigenen Speicher** laufen. Nichts verlässt den verbundenen Speicher, außer den OCR-/Benennungs-Prompts an die Mistral-API.
 
 | Workflow | Was er tut |
 |---|---|
-| `pdf-scan-inbox-triage` | OCR und LLM-Benennung neuer Scans in einem Scanner-Eingangsordner; erkennt Duplex-Paare und benennt sie mit Vorder-/Rueckseiten-Suffix (mischt aber nicht) |
-| `pdf-merge-duplex` | Mischt Duplex-Paare (Vorder-/Rueckseiten alternierend) per JSON-Steuerdatei oder direktem `pairs`-Start-Input; archiviert die Quellen unter `merged/` |
-| `pdf-split` | Teilt eine PDF in Teile — an angegebenen Seitenzahlen oder per LLM geplant (Rueckfrage bei Unsicherheit); Original wird unter `.originals/pdf-split/` gesichert |
-| `pdf-ocr` | Generischer PDF-OCR-Prozessor fuer eine einzelne PDF oder einen Ordner (optional rekursiv); `keep_original` bewahrt das Original als `<Name>_orig.pdf` |
+| `pdf-scan-inbox-triage` | OCR und LLM-Benennung neuer Scans (`Scan.pdf` / `ScanNNNN.pdf`) im Scanner-Eingangsordner; Duplex-Paare bekommen ein Vorder-/Rückseiten-Suffix in der Dokumentsprache — werden aber nicht gemischt |
+| `pdf-merge-duplex` | Mischt Duplex-Paare (Vorder-/Rückseiten alternierend) per JSON-Steuerdatei oder direktem `pairs`-Start-Input |
+| `pdf-split` | Teilt eine PDF an angegebenen Seitenzahlen oder per LLM geplanten Trennstellen (Rückfrage bei Unsicherheit) |
+| `pdf-ocr` | OCR für eine einzelne PDF oder einen ganzen Ordner (optional rekursiv) |
 
-Alle Workflows werden ausschliesslich manuell gestartet (Studio, Chat oder MCP `execute_workflow`) — nie zeit- oder hook-gesteuert, damit ein Lauf nie einen unvollstaendigen Scan-Job auseinanderreisst.
+Alle vier werden **ausschließlich manuell** gestartet (Studio, Chat oder MCP `execute_workflow`) — nie per Schedule oder Webhook, damit ein Lauf nie einen unvollständigen Scan-Job auseinanderreißt.
 
-Die vollstaendige Workflow-Referenz (Inputs, Ergebnis-Shapes, Aktions-Glossar, Beispiele) steht in [WORKFLOWS.de.md](WORKFLOWS.de.md); Deployment und Betrieb in [OPERATIONS.de.md](OPERATIONS.de.md); Architektur und Konventionen in [ARCHITECTURE.de.md](ARCHITECTURE.de.md); Aenderungshistorie in [CHANGELOG.de.md](CHANGELOG.de.md).
+## Schnellstart
 
-## Voraussetzungen
-
-- Ein Datei-Connector (z. B. Nextcloud), im Mistral-Workspace registriert, mit gueltigem Credential. Die Connector-Namen liest der Worker aus der Umgebungsvariable `FILE_CONNECTOR_NAMES` (Komma-Liste, Default `nextcloud`); das Deployment bindet das Workspace-Secret `file_connector_names` als diese Variable. Pro Workflow-Aufruf waehlt das optionale Start-Input-Feld `connector` den Ziel-Connector — bei mehreren aktiven Connectoren zielt ein Aufruf auf einen beliebigen davon.
-- Das Workspace-Secret `scan_inbox_folder` (gebunden als `SCAN_INBOX_FOLDER`): Default-Scanner-Eingang fuer `pdf-scan-inbox-triage`; ein beim Start angegebenes `folder_path` ueberschreibt ihn.
-- Die Mistral-GitHub-App auf diesem Repository (fuer das Managed Deployment).
-- Das Worker-Image installiert systemseitig `ghostscript`, `tesseract-ocr-all`, `jbig2dec` (siehe `deploy/docker/worker-packages/workflows.txt`).
-
-## Start eines Workflows
-
-- **Studio**: Workflows → Start, oder aus einem Chat / per MCP `execute_workflow` — alle vier Workflows unterstuetzen Chat-Starts (`on_behalf_of`).
-- **Beispiel-Inputs**:
+1. **Deployment**: Lege ein Managed-Workflow-Deployment namens `mistralai-workflows` aus diesem Repository an — Dockerfile `deploy/docker/Dockerfile.worker`, Build-Kontext `.`, `hardened=true` (die Workflows laufen `on_behalf_of` dir). Die Deployment-Parameter stehen in [OPERATIONS.de.md](OPERATIONS.de.md).
+2. **Secrets**: Workspace-Secret `scan_inbox_folder` (als Umgebungsvariable `SCAN_INBOX_FOLDER` gebunden) = Standard-Scanner-Eingang für den Triage-Workflow; Workspace-Secret `file_connector_names` (als `FILE_CONNECTOR_NAMES` gebunden, kommagetrennt, Default `nextcloud`) = deine Datei-Connector(s).
+3. **Workflow aufrufen** in Studio/Chat oder per MCP `execute_workflow`. Beispiel-Start-Inputs:
 
 ```json
-{"folder_path": "/<Scanner-Eingang>", "apply_changes": true, "model": "mistral-small-latest", "connector": ""}
+{"folder_path": "/<Scanner-Eingang>", "apply_changes": false}
 ```
 
 ```json
-{"control_file": "/<Scanner-Eingang>/steuerdatei.json", "apply_changes": true, "model": "mistral-small-latest", "connector": ""}
+{"control_file": "/<Scanner-Eingang>/steuerdatei.json", "apply_changes": true, "model": "mistral-small-latest"}
 ```
 
 ```json
-{"target_path": "/Ordner/ oder/datei.pdf", "recursive": false, "force": false, "keep_original": false, "apply_changes": true, "connector": ""}
+{"target_path": "/Ordner/Datei.pdf", "recursive": false, "force": false, "apply_changes": true, "languages": "deu+eng"}
 ```
 
 ```json
-{"target_path": "/<Scanner-Eingang>/Dokument.pdf", "split_at": [2, 4], "apply_changes": true, "connector": ""}
+{"target_path": "/Ordner/Dokument.pdf", "split_at": [2, 4], "apply_changes": true}
 ```
 
-- `apply_changes: false` ist immer ein **Dry-Run**: alles wird gelesen, OCRed und geplant, das Ergebnis meldet, was passieren wuerde (`planned`-Aktionen) — aber es wird nichts geschrieben, auch kein Status in Steuerdateien.
-- `model` waehlt das LLM fuer Benennung/Planung (Default `mistral-small-latest`).
+- `apply_changes: false` ist immer ein **Dry-Run**: alles wird gelesen, OCRed und geplant, das Ergebnis zeigt, was passieren würde — geschrieben wird nichts, auch keine Status-Rückmeldungen in Steuerdateien.
+- Jeder Start-Input akzeptiert außerdem `connector` (Name eines der konfigurierten Datei-Connector, leer = Default) und `model` (LLM für Benennung/Planung, Default `mistral-small-latest`).
+- Vollständige Referenz zu Inputs, Ergebnis-Shapes und Beispielen: [WORKFLOWS.de.md](WORKFLOWS.de.md).
 
-## Ordner- und Datei-Konventionen
+## Konventionen
 
-- KI-benannte Dateien folgen dem Schema `YYYY-MM-DD kurze, beschreibende Bezeichnung.pdf` (ASCII, Umlaute transliteriert); Kollisionen erhalten `_2`, `_3`, ... Dateien werden nie ueberschrieben.
-- **Benennungsregeln pro Ordner**: eine `AGENTS.md`-Datei im jeweiligen Ordner (z. B. dem Scanner-Eingang) wird vor jedem KI-Benennungsschritt gelesen und dem Modell mit Vorrang vor dem Basis-Prompt uebergeben (max. 4000 Zeichen). Dort stehen das Datumsschema, Ausnahmen und Qualifikatoren.
-- **Sprache**: das LLM titelt, benennt und fragt in der Sprache des Dokuments (deutsches Dokument → `Vorderseite`/`Rueckseite`, sonst `Front`/`Back`, und deutsche Titel).
-- **Originale bleiben immer erhalten**: Split → `.originals/pdf-split/<Stamm>/`, Duplex-Mischung → `merged/<Zielname>/` (mit `FrontPages.pdf`/`BackPages_reversed.pdf`), OCR mit `keep_original` → `<Name>_orig.pdf`. Die Workflows loeschen nie; nach der Pruefung von Hand aufraeumen.
-
-## Robustheit
-
-- OCR, Download und Upload senden alle 30 s Aktivitaets-Heartbeats (`heartbeat_timeout` 120 s, je Aktivitaet 2 Versuche): Stirbt der Worker mitten im Lauf (Rollout, Crash), wird das binnen ~2 Minuten erkannt und die Aktivitaet automatisch neu versucht, statt bis zum 45-Minuten-`start_to_close_timeout` stumm zu warten.
-- Jeder OCR-Lauf wird in den Runtime-Logs des Deployments protokolliert (Start, Ende, Dauer, Fehler).
-- Dry-Runs fuehren die OCR vollstaendig aus und melden deshalb echte Fehler; zurueckgeschrieben wird nichts.
+- Dateien heißen `YYYY-MM-DD kurze, beschreibende Bezeichnung.pdf` (ASCII, Umlaute transliteriert); Dateien werden nie überschrieben (Kollisionen bekommen `_2`, `_3`, ...).
+- Ordnerspezifische Benennungsregeln (Datumsschema, Ausnahmen, Qualifizierer) liegen in einer `AGENTS.md`-Datei im jeweiligen Ordner und gehen mit Priorität vor dem Basis-Prompt an das LLM (max. 4000 Zeichen).
+- Das LLM benennt, verschiebt und fragt in der Sprache des Dokuments (deutsches Dokument → `Vorderseite`/`Rueckseite`, deutsche Titel, sonst `Front`/`Back`).
+- **Originale werden immer gesichert** unter `<Ordner>/.originals/<Workflow>/` — in allen vier Workflows standardmäßig an (Split und Merge legen pro Datei/Ziel einen Unterordner an). Die Workflows löschen nie etwas; `.originals/` räumst du nach der Prüfung von Hand auf.
+- OCR-, Download- und Upload-Aktivitäten senden Heartbeats: ein abgestürzter Worker wird binnen ~2 Minuten erkannt und die Aktivität automatisch wiederholt.
 
 ## Datenschutz
 
-- Alle Dateioperationen laufen ueber den Datei-Connector des Workspace **im Auftrag von dir** (`on_behalf_of=True`); das Deployment laeuft deshalb gehaertet (`hardened=true`).
-- Dokumente werden nur im eigenen Speicher ueber den Connector gelesen und geschrieben. Die einzigen externen Aufrufe sind die Mistral-API-Aufrufe fuer OCR-Textextraktion und LLM-Benennung/-Planung.
-- Secrets (`SCAN_INBOX_FOLDER`, `FILE_CONNECTOR_NAMES`) liegen als Workspace-Secrets und werden als Umgebungsvariablen gebunden — nie im Repository oder im Image.
+Alle Dateioperationen laufen über den Datei-Connector deines Workspace **in deinem Namen** (`on_behalf_of=True`, daher das gehärtete Deployment). Dokumente werden nur in deinem eigenen Speicher gelesen und geschrieben; die einzigen externen Aufrufe sind die Mistral-API-Calls für OCR-Textextraktion und LLM-Benennung. Secrets (`SCAN_INBOX_FOLDER`, `FILE_CONNECTOR_NAMES`) liegen als Workspace-Secrets und werden als Umgebungsvariablen gebunden — nie im Repository oder im Image.
 
 ## Lizenz
 
-Dieses Projekt steht unter der **GNU Affero General Public License v3.0 (AGPL-3.0-only)** — siehe [LICENSE](LICENSE). Die "Netzwerknutzung"-Klausel der AGPL (§13) greift: Wer diese Software ueber ein Netzwerk als Dienst anbietet, muss den Nutzern des Netzwerks den korrespondierenden Quellcode zur Verfuegung stellen.
+GNU Affero General Public License v3.0 only (AGPL-3.0-only), siehe [LICENSE](LICENSE). Die §13 der AGPL (Netzwerknutzung) greift: Wer diese Software als Netzwerkdienst anbietet, muss den entsprechenden Quelltext den Netzwerknutzern verfügbar machen.
 
-## Fuer Entwickler
+## Für Entwickler
 
-Repository-Struktur, lokales Setup, Tests und die CI-Quality-Gates stehen in [CONTRIBUTING.md](CONTRIBUTING.md); die verbindlichen Arbeitsregeln (Gates, Typing, Lint, PR-Konventionen) in [AGENTS.md](AGENTS.md).
+Du willst die Workflows weiterentwickeln oder an diesem Repo arbeiten? Die Einstiegspunkte sind [CONTRIBUTING.md](CONTRIBUTING.md) (lokales Setup, Tests, CI-Gates), [AGENTS.md](AGENTS.md) (die verbindlichen Arbeitsregeln) und [ARCHITECTURE.de.md](ARCHITECTURE.de.md) (Konventionen und Arbeitsteilung). Deployment und laufender Betrieb: [OPERATIONS.de.md](OPERATIONS.de.md). Änderungshistorie: [CHANGELOG.de.md](CHANGELOG.de.md).

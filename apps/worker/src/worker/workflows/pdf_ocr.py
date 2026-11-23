@@ -9,11 +9,13 @@ Per file:
 - PDF without a text layer -> OCR (Tesseract deu+eng, deskew, page rotation,
   see worker/ocr.py); the result replaces the file in Nextcloud.
 - PDF with a text layer -> skipped; force=true forces reprocessing.
-- keep_original=true: the original is renamed to <name>_orig.pdf before
-  being replaced and is kept; without the flag the original is overwritten.
-  If a backup already exists without a target file, a previously interrupted
-  run is continued; if both exist, the file stays with an error message.
-- In folder mode, existing *_orig.pdf backups are never touched.
+- keep_original (default true): before the file is replaced, the original is
+  moved to <folder>/.originals/pdf-ocr/<name> and kept; with keep_original=false
+  the original is overwritten. If a backup already exists without a target
+  file, a previously interrupted run is continued; if both exist, the file
+  stays with an error message.
+- In folder mode the .originals folder is never descended into, so backups
+  are never reprocessed.
 
 Only PDFs (case insensitive), no images. At most MAX_FILES_PER_RUN files are
 processed per run; the rest is reported and skipped (please process large
@@ -47,17 +49,20 @@ from worker.pdf_ops import (
     DEFAULT_FILE_CONNECTOR,
     FILE_CONNECTOR_NAMES,
     MAX_CONCURRENT_OCR,
+    ORIGINALS_DIR_NAME,
+    ensure_folder,
     file_client,
     file_connectors,
     http_get,
     http_put,
+    list_names,
+    listing_entries,
     nc_call,
-    original_backup_name,
+    originals_dir,
     pick_url,
 )
 
 MAX_FILES_PER_RUN = 200
-ORIG_SUFFIX = "_orig"
 HEARTBEAT_TIMEOUT = timedelta(seconds=120)
 
 logger = logging.getLogger("worker.pdf_ocr")
@@ -69,7 +74,7 @@ class PdfOcrInput(pydantic.BaseModel):
     target_path: str
     recursive: bool = False
     force: bool = False
-    keep_original: bool = False
+    keep_original: bool = True
     apply_changes: bool = True
     languages: str = OCR_LANGUAGES
     connector: str = ""
@@ -80,24 +85,14 @@ def is_pdf_name(name: str) -> bool:
     return name.lower().endswith(".pdf")
 
 
-def is_backup_name(name: str) -> bool:
-    """True if the name denotes a *_orig.pdf backup."""
-    return name.lower().endswith(ORIG_SUFFIX + ".pdf")
-
-
-def listing_entries(result: Any) -> list[Any]:
-    """Extracts the file list (first level) from a files_list result."""
-    return (
-        result
-        if isinstance(result, list)
-        else next((v for v in result.values() if isinstance(v, list)), [])
-    )
-
-
 def split_entries(
     folder: str, entries: list[Any]
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    """Splits a folder listing into PDF files and subfolder paths."""
+    """Splits a folder listing into PDF files and subfolder paths.
+
+    The .originals folder is skipped: backups stored there are never
+    reprocessed, even with recursive=true.
+    """
     files: list[dict[str, Any]] = []
     subfolders: list[str] = []
     for entry in entries:
@@ -107,7 +102,8 @@ def split_entries(
         if not name:
             continue
         if entry.get("isDir"):
-            subfolders.append(f"{folder}/{name}")
+            if name != ORIGINALS_DIR_NAME:
+                subfolders.append(f"{folder}/{name}")
         elif is_pdf_name(name):
             files.append(
                 {
@@ -214,14 +210,11 @@ async def _process_file_inner(
         size = os.path.getsize(out_path)
         if keep_original:
             parent = os.path.dirname(entry["path"])
-            orig_name = original_backup_name(entry["name"])
-            orig_path = f"{parent}/{orig_name}"
-            listing = await nc_call(nc, "files_list", {"path": parent})
-            names = {
-                e.get("name") for e in listing_entries(listing) if isinstance(e, dict)
-            }
-            if orig_name in names:
-                if entry["name"] in names:
+            originals_root = originals_dir(parent, "pdf-ocr")
+            orig_path = f"{originals_root}/{entry['name']}"
+            await ensure_folder(nc, originals_root)
+            if entry["name"] in await list_names(nc, originals_root):
+                if entry["name"] in await list_names(nc, parent):
                     report["action"] = "error"
                     report["error"] = (
                         f"backup already exists: {orig_path} "
@@ -229,7 +222,7 @@ async def _process_file_inner(
                     )
                     return report
                 # Backup without target file: a previous run was interrupted
-                # after the rename; continue the upload now.
+                # after the move; continue the upload now.
             else:
                 await nc_call(
                     nc,
@@ -319,8 +312,8 @@ async def process_file(
     workflow_description=(
         "Generic PDF OCR processor: a single PDF or a folder "
         "(optionally with subfolders). PDFs without a text layer are processed "
-        "with Tesseract (deskew, page rotation). keep_original keeps the "
-        "original as <name>_orig.pdf. Manual start only."
+        "with Tesseract (deskew, page rotation). keep_original (default true) "
+        "secures the original under .originals/pdf-ocr/. Manual start only."
     ),
     on_behalf_of=True,
     execution_timeout=timedelta(hours=3),
@@ -365,12 +358,6 @@ class PdfOcrWorkflow:
         semaphore = asyncio.Semaphore(MAX_CONCURRENT_OCR)
 
         async def handle(file: dict[str, Any]) -> dict[str, Any]:
-            if listing["kind"] == "folder" and is_backup_name(file["name"]):
-                return {
-                    "path": file["path"],
-                    "action": "skipped",
-                    "reason": "original backup (_orig) left untouched",
-                }
             async with semaphore:
                 try:
                     return await process_file(

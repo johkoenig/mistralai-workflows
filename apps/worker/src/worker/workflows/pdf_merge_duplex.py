@@ -30,8 +30,8 @@ Nextcloud, e.g. /<scanner inbox>/control-file.json:
 For each not-yet-processed entry (without "status"): load both PDFs,
 check the page count, interleave front pages in scan order with back pages in
 reverse order, name the target file (explicit title or LLM from the combined
-OCR text) and upload it next to the sources, archive the source files under
-merged/<name>/, then write the status back into the control file ("done" with
+OCR text) and upload it next to the sources, back the source files up under
+.originals/pdf-merge-duplex/<target name>/, then write the status back into the control file ("done" with
 result or "error" with message; variant B only). Repeated runs (variant B)
 process only entries without status. The workflow is started manually only
 (Studio or chat), never triggered automatically.
@@ -60,12 +60,12 @@ from mistralai.workflows.plugins.mistralai.connectors import uses_connectors
 
 from worker.ocr import run_with_heartbeat
 from worker.pdf_ops import (
-    ARCHIVE_DIR_NAME,
     BACK_FILE_NAME,
     DEFAULT_FILE_CONNECTOR,
     FILE_CONNECTOR_NAMES,
     FRONT_FILE_NAME,
     build_filename,
+    ensure_folder,
     extract_texts,
     file_client,
     file_connectors,
@@ -76,6 +76,7 @@ from worker.pdf_ops import (
     merge_texts,
     name_document,
     nc_call,
+    originals_dir,
     pick_url,
     unique_filename,
 )
@@ -316,24 +317,9 @@ async def apply_pair(
             detail={"phase": "upload", "file": os.path.basename(target_path)},
         )
 
-        # Create the archive folder idempotently. A prior listing of the
-        # parent folder fails as soon as the archive folder
-        # ("merged") does not exist yet; mkdir we tolerate
-        # even when the folder already exists.
-        archive_parent = os.path.dirname(archive_dir)
-        for dir_path in (archive_parent, archive_dir):
-            try:
-                await nc_call(
-                    nc,
-                    "files_mkdir",
-                    {"path": dir_path, "confirm": True, "confirm_shared": True},
-                )
-            except Exception as setup_error:
-                logger.debug(
-                    "files_mkdir %s skipped (probably exists): %s",
-                    dir_path,
-                    setup_error,
-                )
+        # Create the backup folder (including .originals/pdf-merge-duplex)
+        # idempotently; an already existing folder is fine.
+        await ensure_folder(nc, archive_dir)
         await nc_call(
             nc,
             "files_move",
@@ -462,7 +448,9 @@ class PdfMergeDuplexWorkflow:
                     continue
 
                 archive_dir = (
-                    folder + "/" + ARCHIVE_DIR_NAME + "/" + target_name[: -len(".pdf")]
+                    originals_dir(folder, "pdf-merge-duplex")
+                    + "/"
+                    + target_name[: -len(".pdf")]
                 )
                 merged = await apply_pair(
                     front_str, back_str, target_path, archive_dir, connector

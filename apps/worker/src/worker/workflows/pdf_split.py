@@ -61,12 +61,14 @@ from worker.pdf_ops import (
     DEFAULT_FILE_CONNECTOR,
     FILE_CONNECTOR_NAMES,
     MIN_NAMING_CONFIDENCE,
-    ORIGINALS_DIR_NAME,
+    ensure_folder,
     extract_texts,
     file_client,
     file_connectors,
     http_get,
     http_put,
+    list_names,
+    listing_entries,
     load_naming_rules,
     nc_call,
     originals_dir,
@@ -102,15 +104,6 @@ class PdfSplitInput(pydantic.BaseModel):
     model: str = "mistral-small-latest"
     apply_changes: bool = True
     connector: str = ""
-
-
-def listing_entries(result: Any) -> list[Any]:
-    """Extracts the file list (first level) from a files_list result."""
-    return (
-        result
-        if isinstance(result, list)
-        else next((v for v in result.values() if isinstance(v, list)), [])
-    )
 
 
 def resolve_plan(plan: dict[str, Any]) -> tuple[str, dict[str, Any]]:
@@ -329,26 +322,8 @@ async def split_file(
             )
 
         originals_root = originals_dir(parent, "pdf-split")
-        for dir_path in (f"{parent}/{ORIGINALS_DIR_NAME}", originals_root):
-            try:
-                await nc_call(
-                    nc,
-                    "files_mkdir",
-                    {"path": dir_path, "confirm": True, "confirm_shared": True},
-                )
-            except Exception as setup_error:
-                logger.debug(
-                    "files_mkdir %s skipped (probably exists): %s",
-                    dir_path,
-                    setup_error,
-                )
-
-        arch_listing = await nc_call(nc, "files_list", {"path": originals_root})
-        arch_names = {
-            cast("str", entry.get("name"))
-            for entry in listing_entries(arch_listing)
-            if isinstance(entry, dict)
-        }
+        await ensure_folder(nc, originals_root)
+        arch_names = await list_names(nc, originals_root)
         park_dir = f"{originals_root}/{unique_filename(stem, arch_names)}"
         try:
             await nc_call(

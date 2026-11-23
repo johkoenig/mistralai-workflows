@@ -23,16 +23,8 @@ class TestPureHelpers:
         assert not pdf_ocr.is_pdf_name("Brief.jpg")
         assert not pdf_ocr.is_pdf_name("Ordner")
 
-    def test_is_backup_name(self):
-        assert pdf_ocr.is_backup_name("Rechnung_orig.pdf")
-        assert pdf_ocr.is_backup_name("SCAN_ORIG.PDF")
-        assert not pdf_ocr.is_backup_name("Rechnung.pdf")
-        assert not pdf_ocr.is_backup_name("Orig Rechnung.pdf")
-
-    def test_original_backup_name(self):
-        assert pdf_ops.original_backup_name("Rechnung.pdf") == "Rechnung_orig.pdf"
-        assert pdf_ops.original_backup_name("Scan.PDF") == "Scan_orig.PDF"
-        assert pdf_ops.original_backup_name("ohne_endung") == "ohne_endung_orig"
+    def test_keep_original_defaults_to_true(self):
+        assert PdfOcrInput(target_path="/D/x.pdf").keep_original is True
 
     def test_split_entries_filters_and_builds_paths(self):
         entries = [
@@ -40,12 +32,65 @@ class TestPureHelpers:
             _entry("b.PDF"),
             _entry("bild.jpg"),
             _entry("Unterordner", is_dir=True),
+            _entry(".originals", is_dir=True),
             {"not": "a dict-like entry"},
         ]
         files, subfolders = pdf_ocr.split_entries("/X", entries)
         assert [f["name"] for f in files] == ["a.pdf", "b.PDF"]
         assert [f["path"] for f in files] == ["/X/a.pdf", "/X/b.PDF"]
+        # the .originals backup folder is never descended into
         assert subfolders == ["/X/Unterordner"]
+
+
+class _FakeNC:
+    """Minimal ToolCallClient stand-in for the pdf_ops backup helpers."""
+
+    def __init__(self, listings: dict[str, list] | None = None):
+        self.calls: list[tuple[str, dict]] = []
+        self.listings = listings or {}
+
+    async def call_tool(self, tool_name: str, arguments: dict) -> Any:
+        self.calls.append((tool_name, arguments))
+        if tool_name == "files_list":
+            if arguments["path"] in self.listings:
+                return self.listings[arguments["path"]]
+            raise RuntimeError("folder not found")
+        return {}
+
+
+class TestBackupHelpers:
+    async def test_park_original_copies_with_unique_name(self):
+        root = "/D/.originals/pdf-scan-inbox-triage"
+        nc = _FakeNC({root: [{"name": "Scan0000.pdf"}]})
+        dest = await pdf_ops.park_original(nc, "/D/Scan0000.pdf", root)
+        assert dest == f"{root}/Scan0000_2.pdf"
+        assert (
+            "files_copy",
+            {
+                "from": "/D/Scan0000.pdf",
+                "to": dest,
+                "confirm": True,
+                "confirm_shared": True,
+            },
+        ) in nc.calls
+        assert (
+            "files_mkdir",
+            {"path": root, "confirm": True, "confirm_shared": True},
+        ) in nc.calls
+
+    async def test_park_original_first_backup_keeps_name(self):
+        root = "/D/.originals/pdf-ocr"
+        nc = _FakeNC()
+        dest = await pdf_ops.park_original(nc, "/D/Rechnung.pdf", root)
+        assert dest == f"{root}/Rechnung.pdf"
+
+    async def test_list_names_empty_for_missing_folder(self):
+        nc = _FakeNC()
+        assert await pdf_ops.list_names(nc, "/D/.originals/pdf-ocr") == set()
+
+    def test_originals_dir_per_workflow(self):
+        assert pdf_ops.originals_dir("/D", "pdf-ocr") == "/D/.originals/pdf-ocr"
+        assert pdf_ops.originals_dir("/D/", "pdf-split") == "/D/.originals/pdf-split"
 
     def test_build_ocr_command_flags(self):
         cmd = ocr.build_ocr_command(
@@ -107,7 +152,7 @@ def _make_fakes(record_path: str, listing: dict, processed: dict[str, dict]) -> 
     return [fake_list, fake_process]
 
 
-async def test_workflow_processes_folder_and_skips_backups(
+async def test_workflow_processes_folder_and_reports_originals_dir(
     temporal_env, tmp_path, monkeypatch
 ):
     record_path = str(tmp_path / "calls.jsonl")
@@ -116,10 +161,9 @@ async def test_workflow_processes_folder_and_skips_backups(
         "kind": "folder",
         "files": [
             {"name": "OhneText.pdf", "path": "/D/OhneText.pdf", "size": 10},
-            {"name": "MitText_orig.pdf", "path": "/D/MitText_orig.pdf", "size": 10},
             {"name": "Fehler.pdf", "path": "/D/Fehler.pdf", "size": 10},
         ],
-        "total": 3,
+        "total": 2,
         "truncated": False,
     }
     processed = {
@@ -127,7 +171,7 @@ async def test_workflow_processes_folder_and_skips_backups(
             "path": "/D/OhneText.pdf",
             "action": "replaced",
             "pages": 3,
-            "original": "/D/OhneText_orig.pdf",
+            "original": "/D/.originals/pdf-ocr/OhneText.pdf",
         },
         "/D/Fehler.pdf": {"path": "/D/Fehler.pdf", "action": "error", "error": "boom"},
     }
@@ -135,7 +179,7 @@ async def test_workflow_processes_folder_and_skips_backups(
     async with create_test_worker(temporal_env, [PdfOcrWorkflow], activities=fakes):
         raw = await temporal_env.client.execute_workflow(
             PdfOcrWorkflow.run,
-            PdfOcrInput(target_path="/D", keep_original=True, apply_changes=True),
+            PdfOcrInput(target_path="/D", apply_changes=True),
             id="test-pdf-ocr-folder",
             task_queue="test-task-queue",
             execution_timeout=timedelta(seconds=60),
@@ -147,31 +191,28 @@ async def test_workflow_processes_folder_and_skips_backups(
     actions = {a["path"]: a for a in result["actions"]}
     assert actions["/D/OhneText.pdf"]["action"] == "replaced"
     assert actions["/D/Fehler.pdf"]["action"] == "error"
-    assert actions["/D/MitText_orig.pdf"]["action"] == "skipped"
 
     calls = [
         json.loads(line)
         for line in Path(record_path).read_text(encoding="utf-8").splitlines()
     ]
     processed_paths = [c["path"] for c in calls if c["activity"] == "process"]
-    assert "/D/MitText_orig.pdf" not in processed_paths
-    assert len(processed_paths) == 2
+    assert processed_paths == ["/D/OhneText.pdf", "/D/Fehler.pdf"]
     ohnetext = next(
         c
         for c in calls
         if c["activity"] == "process" and c["path"] == "/D/OhneText.pdf"
     )
+    # backups are on by default
     assert ohnetext["keep_original"] is True
 
 
-async def test_workflow_single_file_mode_is_not_backup_filtered(
-    temporal_env, tmp_path, monkeypatch
-):
+async def test_workflow_single_file_mode(temporal_env, tmp_path, monkeypatch):
     record_path = str(tmp_path / "calls.jsonl")
     monkeypatch.setenv("SCANNER_TEST_CALLS", record_path)
     listing = {
         "kind": "file",
-        "files": [{"name": "X_orig.pdf", "path": "/D/X_orig.pdf", "size": 10}],
+        "files": [{"name": "X.pdf", "path": "/D/X.pdf", "size": 10}],
         "total": 1,
         "truncated": False,
     }
@@ -179,7 +220,7 @@ async def test_workflow_single_file_mode_is_not_backup_filtered(
     async with create_test_worker(temporal_env, [PdfOcrWorkflow], activities=fakes):
         raw = await temporal_env.client.execute_workflow(
             PdfOcrWorkflow.run,
-            PdfOcrInput(target_path="/D/X_orig.pdf", force=True, apply_changes=True),
+            PdfOcrInput(target_path="/D/X.pdf", force=True, apply_changes=True),
             id="test-pdf-ocr-single",
             task_queue="test-task-queue",
             execution_timeout=timedelta(seconds=60),
@@ -192,7 +233,7 @@ async def test_workflow_single_file_mode_is_not_backup_filtered(
         json.loads(line)
         for line in Path(record_path).read_text(encoding="utf-8").splitlines()
     ]
-    assert [c["path"] for c in calls if c["activity"] == "process"] == ["/D/X_orig.pdf"]
+    assert [c["path"] for c in calls if c["activity"] == "process"] == ["/D/X.pdf"]
 
 
 async def test_workflow_reports_truncation_and_empty(
