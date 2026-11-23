@@ -75,7 +75,6 @@ MIN_NAMING_CONFIDENCE = 0.7
 MAX_CONCURRENT_OCR = 2
 # Folder-specific naming rules (AGENTS.md): maximum number of characters loaded.
 NAMING_RULES_MAX_CHARS = 4000
-ARCHIVE_DIR_NAME = "merged"
 # Uniform storage location for secured originals of all workflows.
 ORIGINALS_DIR_NAME = ".originals"
 FRONT_FILE_NAME = "FrontPages.pdf"
@@ -148,14 +147,6 @@ def unique_filename(base: str, taken: set[str]) -> str:
     while f"{stem}_{counter}.{ext}" in taken:
         counter += 1
     return f"{stem}_{counter}.{ext}"
-
-
-def original_backup_name(name: str) -> str:
-    """File name for a kept original: <stem>_orig.<ext>."""
-    stem, dot, ext = name.rpartition(".")
-    if not dot:
-        return name + "_orig"
-    return f"{stem}_orig.{ext}"
 
 
 def normalize_text(text: str) -> str:
@@ -356,10 +347,63 @@ def merge_pdf_files(front_path: str, back_path: str, out_path: str) -> int:
 def originals_dir(folder: str, workflow: str) -> str:
     """Uniform storage location for secured originals.
 
-    <folder>/.originals/<workflow>. Each workflow creates a further folder per
-    file below it, so repeated runs never overwrite anything.
+    <folder>/.originals/<workflow>. Whether a further subfolder per file is
+    created below it depends on the workflow (pdf-split and pdf-merge-duplex
+    use one, pdf-ocr and pdf-scan-inbox-triage park the file directly), so
+    repeated runs never overwrite anything.
     """
     return f"{folder.rstrip('/')}/{ORIGINALS_DIR_NAME}/{workflow}"
+
+
+def listing_entries(result: Any) -> list[Any]:
+    """Extracts the file list (first level) from a files_list result."""
+    return (
+        result
+        if isinstance(result, list)
+        else next((v for v in result.values() if isinstance(v, list)), [])
+    )
+
+
+async def ensure_folder(nc: ToolCallClient, path: str) -> None:
+    """Creates path (including intermediate folders); an existing folder is fine."""
+    try:
+        await nc_call(
+            nc, "files_mkdir", {"path": path, "confirm": True, "confirm_shared": True}
+        )
+    except Exception as exc:
+        logger.debug("files_mkdir %s skipped (probably exists): %s", path, exc)
+
+
+async def list_names(nc: ToolCallClient, folder: str) -> set[str]:
+    """Names of the first level of folder; empty set when the folder does not exist (yet)."""
+    try:
+        listing = await nc_call(nc, "files_list", {"path": folder})
+    except Exception:
+        return set()
+    return {
+        cast("str", entry.get("name"))
+        for entry in listing_entries(listing)
+        if isinstance(entry, dict) and entry.get("name")
+    }
+
+
+async def park_original(nc: ToolCallClient, from_path: str, originals_root: str) -> str:
+    """Copies from_path into originals_root under its own name; returns the backup path.
+
+    Never overwrites: on a name collision the backup gets a _2, _3, ... suffix.
+    Used by workflows that keep the source in place (rename, OCR overwrite),
+    so the original is copied, not moved.
+    """
+    await ensure_folder(nc, originals_root)
+    name = os.path.basename(from_path)
+    taken = await list_names(nc, originals_root)
+    dest = f"{originals_root.rstrip('/')}/{unique_filename(name, taken)}"
+    await nc_call(
+        nc,
+        "files_copy",
+        {"from": from_path, "to": dest, "confirm": True, "confirm_shared": True},
+    )
+    return dest
 
 
 def part_ranges(page_count: int, split_at: list[int]) -> list[tuple[int, int]]:

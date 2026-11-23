@@ -10,7 +10,8 @@ All workflows:
 - use `apply_changes` (default `true`); `false` is the dry run: everything is read, planned and checked, but nothing is written (not even status feedback into control files);
 - name files by the schema `YYYY-MM-DD short, descriptive title.pdf` (ASCII, umlauts transliterated), personal documents with `(first name)` at the end;
 - read folder-specific naming rules from `<folder>/AGENTS.md` (max. 4000 characters; if the file is missing: only the base prompt), whenever the AI names something;
-- never overwrite files (collisions get `_2`, `_3`, ...).
+- never overwrite files (collisions get `_2`, `_3`, ...);
+- secure originals under `<folder>/.originals/<workflow>/` before anything is modified (per-workflow subfolder where useful: `pdf-split` and `pdf-merge-duplex` create one per file/target, `pdf-ocr` and `pdf-scan-inbox-triage` park the file directly); backups are on by default in every workflow, and `.originals` is never scanned or reprocessed.
 
 ## Result and action glossary
 
@@ -25,7 +26,7 @@ Every run result contains `applied` at the top (true = written, false = planned/
 | `left_unchanged` | uncertain (confidence < 0.7 or no title), nothing changed | triage |
 | `merged` | duplex pair merged | merge |
 | `replaced` | PDF was replaced (via OCR) | ocr |
-| `skipped` | file skipped (text layer present, `force` not set; backup file) | ocr |
+| `skipped` | file skipped (text layer present, `force` not set) | ocr |
 | `split` | PDF was split | split |
 | `no_split` | everything is one coherent document, no split | split |
 | `clarification` | uncertain, follow-up question with `question` and `proposal`, nothing written | split |
@@ -42,13 +43,13 @@ OCR and naming of new scans in the Nextcloud scanner inbox (top folder level onl
 ```
 (The default folder in the original setup is the personal scanner inbox; the workspace secret `SCAN_INBOX_FOLDER` (environment variable in the deployment) applies when `folder_path` is omitted, and `model` selects the naming LLM.)
 
-**Flow**: find `Scan.pdf` / `ScanNNNN.pdf` → analyze in parallel (OCR if there is no text layer; the result replaces the file in Nextcloud) → detect duplex pairs (same page count, size factor 0.5-2.0, text overlap >= 0.4) → name (`name-document` with the AGENTS.md rules of the inbox folder) → rename only. Pairs are not merged; they get a front/back suffix in the document's language (`Vorderseite`/`Rueckseite` for German documents, `Front`/`Back` otherwise); the merging is done by pdf-merge-duplex.
+**Flow**: find `Scan.pdf` / `ScanNNNN.pdf` → analyze in parallel (OCR if there is no text layer; before the result replaces the file in Nextcloud, the current scan is parked as a copy under `.originals/pdf-scan-inbox-triage/`) → detect duplex pairs (same page count, size factor 0.5-2.0, text overlap >= 0.4) → name (`name-document` with the AGENTS.md rules of the inbox folder) → rename only (each renamed scan is parked under `.originals/pdf-scan-inbox-triage/` first, if not already done). Pairs are not merged; they get a front/back suffix in the document's language (`Vorderseite`/`Rueckseite` for German documents, `Front`/`Back` otherwise); the merging is done by pdf-merge-duplex.
 
-**Result**: `{folder, applied, actions[]}` with `action` per unit from `planned` / `planned_pair` / `renamed` / `renamed_pair` / `left_unchanged`.
+**Result**: `{folder, applied, actions[]}` with `action` per unit from `planned` / `planned_pair` / `renamed` / `renamed_pair` / `left_unchanged`; `renamed` / `renamed_pair` additionally carry `backups` with the `.originals/pdf-scan-inbox-triage/...` paths.
 
 ## pdf-merge-duplex
 
-Manual duplex merging, either directly via `pairs` in the start input or via a JSON control file (format: see ARCHITECTURE.md). Per entry: check the page count, interleave front/back pages alternately (back pages in reverse order), name, and upload next to the sources; the source files move to `merged/<target name>/`. With a control file, the workflow writes the status back per entry (`done`/`error`); repeated runs process only entries without status.
+Manual duplex merging, either directly via `pairs` in the start input or via a JSON control file (format: see ARCHITECTURE.md). Per entry: check the page count, interleave front/back pages alternately (back pages in reverse order), name, and upload next to the sources; the source files are backed up under `.originals/pdf-merge-duplex/<target name>/` (as `FrontPages.pdf` / `BackPages_reversed.pdf`). With a control file, the workflow writes the status back per entry (`done`/`error`); repeated runs process only entries without status.
 
 **Input (variant A, direct)**
 
@@ -70,12 +71,12 @@ An explicit `title` wins; otherwise the AI names (`name-document` with the AGENT
 
 ## pdf-ocr
 
-Generic OCR processor for a single PDF or a folder (`recursive: true` also subfolders). PDFs without a text layer are processed with OCRmyPDF (Tesseract `deu+eng`, deskew, automatic page rotation) and replaced; PDFs with a text layer are skipped (`force: true` forces reprocessing). `keep_original: true` secures the original as `<name>_orig.pdf`; existing `*_orig.pdf` are never touched. At most 200 files per run.
+Generic OCR processor for a single PDF or a folder (`recursive: true` also subfolders, but never `.originals`). PDFs without a text layer are processed with OCRmyPDF (Tesseract `deu+eng`, deskew, automatic page rotation) and replaced; PDFs with a text layer are skipped (`force: true` forces reprocessing). `keep_original` (default `true`) moves the original to `.originals/pdf-ocr/<name>` before replacing it; if a backup already exists, the file is left with an error message, and a backup without a target file resumes an interrupted run. At most 200 files per run.
 
 **Input**
 
 ```json
-{"target_path": "/folder", "recursive": false, "force": false, "keep_original": false, "apply_changes": true, "languages": "deu+eng", "connector": ""}
+{"target_path": "/folder", "recursive": false, "force": false, "keep_original": true, "apply_changes": true, "languages": "deu+eng", "connector": ""}
 ```
 
 **Result**: `{target, kind, applied, actions[]}` with `action` per file from `planned` / `replaced` / `skipped` / `error`; `note` reports limits and empty results.

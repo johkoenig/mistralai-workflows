@@ -143,7 +143,9 @@ async def test_workflow_merges_pair_and_writes_status(
         == "SCANNER_INBOX/2026-11-28 Rechnung Beispielwerke.pdf"
     )
     assert loaded["pairs"][0]["status"] == "done"
-    assert loaded["pairs"][0]["result"]["archive"].startswith("SCANNER_INBOX/merged/")
+    assert loaded["pairs"][0]["result"]["archive"].startswith(
+        "SCANNER_INBOX/.originals/pdf-merge-duplex/"
+    )
     calls = [
         json.loads(line)
         for line in Path(record_path).read_text(encoding="utf-8").splitlines()

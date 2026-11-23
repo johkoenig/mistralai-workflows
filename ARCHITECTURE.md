@@ -34,18 +34,18 @@ only ever starts after a completed scan.
 - Duplex halves from the triage run additionally carry a front/back suffix in the
   document's language ("Vorderseite"/"Rueckseite" for German documents, "Front"/"Back"
   otherwise), on the same title.
-- Source files of scanned duplex pairs are moved by the merge workflow to
-  merged/<target name>/ where they are called FrontPages.pdf
+- Source files of scanned duplex pairs are backed up by the merge workflow under
+  .originals/pdf-merge-duplex/<target name>/ where they are called FrontPages.pdf
   and BackPages_reversed.pdf.
 - Uncertain naming (confidence < 0.7 in triage) is left untouched; the
   merge workflow then requires an explicit title.
 - Scanned is the scanner inbox (start parameter folder_path; default from
   the environment variable SCAN_INBOX_FOLDER, bound as a workspace secret
   in the deployment), never subfolders.
-- pdf-ocr with keep_original=true renames the original to <name>_orig.pdf
-  before replacing it. Such _orig backups are never processed again in
-  folder mode; if a backup already exists, the file is left behind with
-  an error message.
+- pdf-ocr with keep_original (default true) moves the original to
+  .originals/pdf-ocr/<name> before replacing it. In folder mode .originals is
+  never descended into, so backups are never reprocessed; if a backup already
+  exists, the file is left behind with an error message.
 - pdf-ocr processes PDFs only (any case), no images, and at most 200
   files per run (the rest is reported).
 
@@ -137,8 +137,8 @@ pdf-split has two AI steps, both individually switchable:
 
 - Long activities (OCR, download, upload) send an activity heartbeat every 30 s (heartbeat_timeout 120 s) and have retry_policy_max_attempts=2. A worker restart during a run (rollout, crash) is detected in under two minutes and the activity retried; without a heartbeat Temporal would notice the task loss only after start_to_close_timeout (up to 45 min) and the run would sit silently.
 - worker/ocr.py logs start, end, duration and errors of every OCR run to the runtime logs; progress is visible, also in dry runs.
-- keep_original attempts are resumable: if the _orig backup already exists but the target file is missing, a previously interrupted run is resumed at the next start instead of duplicating.
+- keep_original attempts are resumable: if the backup in .originals/pdf-ocr already exists but the target file is missing, a previously interrupted run is resumed at the next start instead of duplicating.
 
 ## Original-file custody (.originals)
 
-Secured originals are stored uniformly under `<folder>/.originals/<workflow>/<stem>/`. pdf-split parks the original under `.originals/pdf-split/<stem>/`; the folder is created per file, repeated runs create counter suffixes instead of overwriting. Benefit: one place to inspect and clean up ("what may go away at some point?"). Older processes still store elsewhere (duplex merge: `merged/`, OCR backup: `<name>_orig.pdf`); a later migration is possible.
+Secured originals are stored uniformly under `<folder>/.originals/<workflow>/`, on by default in every workflow. pdf-split parks the original under `.originals/pdf-split/<stem>/` (one folder per file, repeated runs create counter suffixes instead of overwriting); pdf-merge-duplex backs the pair sources up under `.originals/pdf-merge-duplex/<target name>/`; pdf-ocr moves the original to `.originals/pdf-ocr/<name>`; pdf-scan-inbox-triage parks a copy of each scan under `.originals/pdf-scan-inbox-triage/` before modifying it. Benefit: one place to inspect and clean up ("what may go away at some point?").

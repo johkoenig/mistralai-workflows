@@ -43,7 +43,7 @@ Erkennung nach jedem Start: der Worker registriert automatisch alle Workflow-Mod
 
 - **Dry-Run zuerst**: neue oder geänderte Workflows immer zuerst mit `apply_changes: false` gegen ein echtes Dokument prüfen.
 - **Manuelle Starts nur**: kein Zeitplan, kein Webhook; Begründung in ARCHITECTURE.md. Sperrige Verarbeitung erst nach vollständigem Scanvorgang.
-- **Originale bleiben**: jedes Workflow sichert Originale (Split: `.originals/pdf-split/<Stamm>/`, Duplex-Mischung: `merged/<Zielname>/`, OCR: `<Name>_orig.pdf`). Aufzuräumen ist von Hand, wenn die Ergebnisse geprüft sind; die Workflows löschen nie.
+- **Originale bleiben**: jedes Workflow sichert Originale standardmäßig unter `<Ordner>/.originals/<Workflow>/` (Split: Unterordner `<Stamm>/`, Duplex-Mischung: Unterordner `<Zielname>/`, OCR und Triage: die Datei selbst). Aufzuräumen ist von Hand, wenn die Ergebnisse geprüft sind; die Workflows löschen nie.
 
 ## Benennungsregeln (AGENTS.md)
 

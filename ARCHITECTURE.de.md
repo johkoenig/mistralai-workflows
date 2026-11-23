@@ -31,15 +31,15 @@ erzeugen. Sperrige Verarbeitung immer erst nach vollstaendigem Scan.
   transliteriert, max. 80 Zeichen Titel; ohne verlaessliches Datum nur die Bezeichnung).
 - Duplex-Haelften aus dem Triage-Lauf tragen zusaetzlich die Suffixe
   "Vorderseite" bzw. "Rueckseite", derselbe Titel.
-- Quelldateien gescannter Duplex-Paare werden vom Merge-Workflow nach
-  merged/<Zielname>/ verschoben und heissen dort FrontPages.pdf
+- Quelldateien gescannter Duplex-Paare werden vom Merge-Workflow unter
+  .originals/pdf-merge-duplex/<Zielname>/ gesichert und heissen dort FrontPages.pdf
   und BackPages_reversed.pdf.
 - Unsichere Benennungen (confidence < 0.7 im Triage) bleiben unveraendert
   liegen; der Merge-Workflow verlangt dann einen expliziten Titel.
 - Gescannt wird der Scanner-Eingang (Start-Parameter folder_path; Default aus der Umgebungsvariable SCAN_INBOX_FOLDER, im Deployment als Workspace-Secret gebunden), nie Unterordner.
-- pdf-ocr mit keep_original=true benennt das Original vor dem Ersetzen nach
-  <Name>_orig.pdf um. Solche _orig-Backups werden im Ordner-Modus nie
-  erneut verarbeitet; existiert ein Backup bereits, bleibt die Datei mit
+- pdf-ocr verschiebt das Original mit keep_original (Standard true) vor dem
+  Ersetzen nach .originals/pdf-ocr/<Name>. Im Ordner-Modus wird .originals nie
+  betreten, Backups werden also nie erneut verarbeitet; existiert ein Backup bereits, bleibt die Datei mit
   Fehlermeldung liegen.
 - pdf-ocr verarbeitet nur PDFs (Schreibweise egal), keine Bilder, und pro
   Lauf maximal 200 Dateien (der Rest wird gemeldet).
@@ -126,8 +126,8 @@ pdf-split kennt zwei AI-Schritte, beide einzeln abschaltbar:
 
 - Lange Aktivitaeten (OCR, Download, Upload) senden alle 30 s einen Aktivitaets-Heartbeat (heartbeat_timeout 120 s) und haben retry_policy_max_attempts=2. Ein Worker-Neustart waehrend eines Laufs (Rollout, Crash) wird dadurch in unter zwei Minuten erkannt und die Aktivitaet neu versucht; ohne Heartbeat wuerde Temporal den Aufgabenverlust erst nach start_to_close_timeout (bis zu 45 min) bemerken und der Lauf stuende stumm still.
 - worker/ocr.py loggt Start, Ende, Dauer und Fehler jedes OCR-Laufs in die Runtime-Logs; Fortschritt ist damit sichtbar, auch in Dry-Runs.
-- keep_original-Versuche sind fortsetzbar: Existiert das _orig-Backup schon, aber die Zieldatei fehlt, wird ein frueher unterbrochener Lauf beim naechsten Start fortgesetzt, statt doppelt anzulegen.
+- keep_original-Versuche sind fortsetzbar: Existiert das Backup in .originals/pdf-ocr schon, aber die Zieldatei fehlt, wird ein frueher unterbrochener Lauf beim naechsten Start fortgesetzt, statt doppelt anzulegen.
 
 ## Originale-Verwahrung (.originals)
 
-Gesicherte Originale landen einheitlich unter `<Ordner>/.originals/<Workflow>/<Stamm>/`. pdf-split parkt das Original unter `.originals/pdf-split/<Stamm>/`; der Ordner wird pro Datei angelegt, wiederholte Läufe erzeugen Zähler-Suffixe statt zu überschreiben. Vorteil: ein Ort zum Prüfen und Aufräumen („was darf irgendwann weg?“). Ältere Prozesse lagern noch an anderem Ort (Duplex-Mischung: `merged/`, OCR-Backup: `<Name>_orig.pdf`); eine spätere Migration ist möglich.
+Gesicherte Originale landen einheitlich unter `<Ordner>/.originals/<Workflow>/`, in jedem Workflow standardmäßig an. pdf-split parkt das Original unter `.originals/pdf-split/<Stamm>/` (pro Datei ein Ordner, wiederholte Läufe erzeugen Zähler-Suffixe statt zu überschreiben); pdf-merge-duplex sichert die Paar-Quellen unter `.originals/pdf-merge-duplex/<Zielname>/`; pdf-ocr verschiebt das Original nach `.originals/pdf-ocr/<Name>`; pdf-scan-inbox-triage parkt vor jeder Änderung eine Kopie jedes Scans unter `.originals/pdf-scan-inbox-triage/`. Vorteil: ein Ort zum Prüfen und Aufräumen („was darf irgendwann weg?“).

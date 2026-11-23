@@ -10,7 +10,8 @@ Alle Workflows:
 - nutzen `apply_changes` (Standard `true`); `false` ist der Dry-Run: alles wird gelesen, geplant und geprüft, aber nichts geschrieben (auch keine Status-Rückmeldungen in Steuerdateien);
 - benennen Dateien nach dem Schema `YYYY-MM-DD kurze, beschreibende Bezeichnung.pdf` (ASCII, Umlaute transliteriert), personenbezogene Dokumente mit `(Vorname)` am Ende;
 - lesen ordnerspezifische Benennungsregeln aus `<Ordner>/AGENTS.md` (max. 4000 Zeichen; fehlt die Datei: nur der Basis-Prompt), wann immer die KI benennt;
-- überschreiben niemals Dateien (Kollisionen erhalten `_2`, `_3`, ...).
+- überschreiben niemals Dateien (Kollisionen erhalten `_2`, `_3`, ...);
+- sichern Originale vor jeder Änderung unter `<Ordner>/.originals/<Workflow>/` (pro Workflow ggf. ein weiterer Unterordner: `pdf-split` und `pdf-merge-duplex` legen einen pro Datei/Ziel an, `pdf-ocr` und `pdf-scan-inbox-triage` parken die Datei direkt); Backups sind in jedem Workflow standardmäßig an, und `.originals` wird nie durchsucht oder erneut verarbeitet.
 
 ## Ergebnis- und Action-Glossar
 
@@ -44,13 +45,13 @@ OCR und Benennung neuer Scans im Nextcloud-Scanner-Eingang (nur erste Ordnereben
 - `folder_path`: Scanner-Eingang; fehlt er, gilt das Workspace-Secret `SCAN_INBOX_FOLDER` (Umgebungsvariable im Deployment).
 - `model`: LLM für die Benennung.
 
-**Ablauf**: `Scan.pdf` / `ScanNNNN.pdf` finden → parallel analysieren (OCR, falls keine Textebene; Ergebnis ersetzt die Datei in Nextcloud) → Duplex-Paare erkennen (gleiche Seitenzahl, Größe Faktor 0.5-2.0, Textüberlappung >= 0.4) → benennen (`name-document` mit den AGENTS.md-Regeln des Eingangsordners) → nur Umbenennen. Paare werden nicht gemischt, sondern mit einem Suffix in der Dokumentsprache versehen (`Vorderseite`/`Rueckseite` bei deutschen Dokumenten, sonst `Front`/`Back`); das Mischen übernimmt pdf-merge-duplex.
+**Ablauf**: `Scan.pdf` / `ScanNNNN.pdf` finden → parallel analysieren (OCR, falls keine Textebene; bevor das Ergebnis die Datei in Nextcloud ersetzt, wird der aktuelle Scan als Kopie unter `.originals/pdf-scan-inbox-triage/` geparkt) → Duplex-Paare erkennen (gleiche Seitenzahl, Größe Faktor 0.5-2.0, Textüberlappung >= 0.4) → benennen (`name-document` mit den AGENTS.md-Regeln des Eingangsordners) → nur Umbenennen (jede umbenannte Datei wird vorher unter `.originals/pdf-scan-inbox-triage/` geparkt, falls nicht schon geschehen). Paare werden nicht gemischt, sondern mit einem Suffix in der Dokumentsprache versehen (`Vorderseite`/`Rueckseite` bei deutschen Dokumenten, sonst `Front`/`Back`); das Mischen übernimmt pdf-merge-duplex.
 
-**Ergebnis**: `{folder, applied, actions[]}` mit `action` pro Einheit aus `planned` / `planned_pair` / `renamed` / `renamed_pair` / `left_unchanged`.
+**Ergebnis**: `{folder, applied, actions[]}` mit `action` pro Einheit aus `planned` / `planned_pair` / `renamed` / `renamed_pair` / `left_unchanged`; `renamed` / `renamed_pair` tragen zusätzlich `backups` mit den `.originals/pdf-scan-inbox-triage/...`-Pfaden.
 
 ## pdf-merge-duplex
 
-Manuelles Duplex-Mischen, entweder direkt per `pairs` im Start-Input oder per JSON-Steuerdatei (Format: siehe ARCHITECTURE.md). Pro Eintrag: Seitenzahl prüfen, Vorder-/Rückseiten alternierend mischen (Rückseiten in umgekehrter Reihenfolge), benennen und neben den Quellen hochladen; Quelldateien wandern nach `merged/<Zielname>/`. Bei Steuerdatei schreibt der Workflow den Status je Eintrag zurück (`done`/`error`), wiederholte Läufe bearbeiten nur Einträge ohne Status.
+Manuelles Duplex-Mischen, entweder direkt per `pairs` im Start-Input oder per JSON-Steuerdatei (Format: siehe ARCHITECTURE.md). Pro Eintrag: Seitenzahl prüfen, Vorder-/Rückseiten alternierend mischen (Rückseiten in umgekehrter Reihenfolge), benennen und neben den Quellen hochladen; die Quelldateien werden unter `.originals/pdf-merge-duplex/<Zielname>/` gesichert (als `FrontPages.pdf` / `BackPages_reversed.pdf`). Bei Steuerdatei schreibt der Workflow den Status je Eintrag zurück (`done`/`error`), wiederholte Läufe bearbeiten nur Einträge ohne Status.
 
 **Input (Variante A, direkt)**
 
@@ -70,12 +71,12 @@ Expliziter `title` gewinnt; sonst benennt die KI (`name-document` mit den AGENTS
 
 ## pdf-ocr
 
-Generischer OCR-Prozessor für eine einzelne PDF oder einen Ordner (`recursive: true` auch Unterordner). PDFs ohne Textebene werden mit OCRmyPDF (Tesseract `deu+eng`, Deskew, automatische Seitenrotation) aufbereitet und ersetzt; PDFs mit Textebene werden übersprungen (`force: true` erzwingt Neuaufbereitung). `keep_original: true` sichert das Original als `<Name>_orig.pdf`; vorhandene `*_orig.pdf` werden nie angefasst. Höchstens 200 Dateien pro Lauf.
+Generischer OCR-Prozessor für eine einzelne PDF oder einen Ordner (`recursive: true` auch Unterordner, aber nie `.originals`). PDFs ohne Textebene werden mit OCRmyPDF (Tesseract `deu+eng`, Deskew, automatische Seitenrotation) aufbereitet und ersetzt; PDFs mit Textebene werden übersprungen (`force: true` erzwingt Neuaufbereitung). `keep_original` (Standard `true`) verschiebt das Original vor dem Ersetzen nach `.originals/pdf-ocr/<Name>`; existiert bereits ein Backup, bleibt die Datei mit Fehlermeldung stehen, und ein Backup ohne Zieldatei setzt einen unterbrochenen Lauf fort. Höchstens 200 Dateien pro Lauf.
 
 **Input**
 
 ```json
-{"target_path": "/Ordner", "recursive": false, "force": false, "keep_original": false, "apply_changes": true, "languages": "deu+eng", "connector": ""}
+{"target_path": "/Ordner", "recursive": false, "force": false, "keep_original": true, "apply_changes": true, "languages": "deu+eng", "connector": ""}
 ```
 
 **Ergebnis**: `{target, kind, applied, actions[]}` mit `action` pro Datei aus `planned` / `replaced` / `skipped` / `error`; `note` meldet Limits und leere Ergebnisse.
