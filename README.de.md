@@ -12,7 +12,7 @@ Ein Repository, ein Managed Deployment in deinem Mistral-Workspace, vier Workflo
 
 | Workflow | Was er tut |
 |---|---|
-| `pdf-scanner-processor` | Kompletter Durchlauf über einen Scanner-Eingangsordner: OCR neuer Scans, Vorder-/Rückseiten-Erkennung + alternierendes Mischen (Zwischenname `ScanMerged<N>.pdf`), LLM-Benennung zu `YYYY-MM-DD Titel.pdf`, Split pro Datei nur bei sicherer Erkennung |
+| `pdf-scanner-processor` | Kompletter Durchlauf über einen Scanner-Eingangsordner: OCR neuer Scans, Vorder-/Rückseiten-Erkennung + alternierendes Mischen (Zwischenname `ScanMerged<N>.pdf`), LLM-Benennung gemäß nächster AGENTS.md, Split pro Datei nur bei sicherer Erkennung |
 
 **Steps** — jeder macht genau eine Sache und ist auch einzeln startbar
 
@@ -46,17 +46,16 @@ Alle vier werden **ausschließlich manuell** gestartet (Studio, Chat oder MCP `e
 
 ## Konventionen
 
-Im Projekt eingebaut (Basis-Prompt und Code):
+Im Projekt eingebaut (Code und Basis-Prompt):
 
-- Dateien heißen `YYYY-MM-DD kurze, beschreibende Bezeichnung.pdf` (ASCII, Umlaute transliteriert, max. 80 Zeichen Bezeichnung; ohne verlässliches Datum nur die Bezeichnung) — dieses Datumsschema ist Teil des Basis-Prompts im Projekt. Gemischte Vorder-/Rückseiten-Paare bekommen zuerst den Zwischennamen `ScanMerged<N>.pdf` (N = größere Scan-Nummer des Paares) und werden danach in den endgültigen Titel umbenannt.
-- Dateien werden nie überschrieben (Kollisionen bekommen `_2`, `_3`, ...).
+- Das Projekt selbst definiert **kein Dateinamensschema** — Namen wählt das LLM. Das Projekt bereinigt Namen nur technisch (ASCII, Umlaute transliteriert, max. 80 Zeichen) und überschreibt nie Dateien (Kollisionen bekommen `_2`, `_3`, ...). Gemischte Vorder-/Rückseiten-Paare bekommen zuerst den Zwischennamen `ScanMerged<N>.pdf` (N = größere Scan-Nummer des Paares) und werden danach in den endgültigen Namen umbenannt.
 - Das LLM benennt und fragt in der Sprache des Dokuments.
 - **Originale werden immer gesichert** unter `<Ordner>/.originals/<Workflow>/` — in allen vier Workflows standardmäßig an (Split und Merge legen pro Datei/Ziel einen Unterordner an). Die Workflows löschen nie etwas; `.originals/` räumst du nach der Prüfung von Hand auf.
 - OCR-, Download- und Upload-Aktivitäten senden Heartbeats: ein abgestürzter Worker wird binnen ~2 Minuten erkannt und die Aktivität automatisch wiederholt.
 
-Aus der `AGENTS.md` deines Ordners (ordnerspezifisch, **nicht Teil dieses Repositories**):
+Benennungskonventionen kommen aus deiner `AGENTS.md` — **nicht Teil dieses Repositories**:
 
-- Ordnerspezifische Benennungsregeln — Details zum Datumsschema, Ausnahmen, Qualifizierer, z. B. personenbezogene Dokumente mit `(Vorname)` am Ende oder ein `#xxxx`-Marker für Krankenkassenbelege — liegen in einer `AGENTS.md`-Datei im jeweiligen Ordner und gehen mit Priorität vor dem Basis-Prompt an das LLM (max. 4000 Zeichen). Fehlt die Datei, gilt nur der Basis-Prompt.
+- Dateinamenskonventionen (Schema wie ein Datumpräfix, Ausnahmen, Qualifizierer) liegen in einer `AGENTS.md` im jeweiligen Ordner **oder einem darüberliegenden Ordner** — die nächstliegende gewinnt. Sie geht mit Priorität vor dem Basis-Prompt an das LLM (max. 4000 Zeichen). Existiert nirgendwo in der Kette eine `AGENTS.md`, wählt das LLM selbst einen passenden Namen. Der Inhalt der `AGENTS.md` ist privat und wird weder in diesem Repository noch in dessen Dokumentation gespiegelt.
 
 ## Datenschutz
 

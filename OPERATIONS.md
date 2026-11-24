@@ -47,11 +47,11 @@ Discovery after every start: the worker automatically registers all workflow mod
 
 ## Naming rules (AGENTS.md)
 
-Folder-specific naming rules live as `AGENTS.md` in the respective folder (e.g. the scanner inbox; a default date schema, a health-insurance-receipt exception with a `#xxxx ...` marker, and a person-name qualifier). Every AI-naming workflow (`pdf-scanner-processor`, `pdf-alternating-merge` without an explicit `title`, `pdf-split`) loads them via the `load-naming-rules` activity (max. 4000 characters) and passes them to the model with priority over the base prompt. Changes to AGENTS.md take effect from the next run, without a redeploy.
+Folder-specific naming rules live as `AGENTS.md` in the respective folder or a parent folder — the nearest one wins (e.g. an AGENTS.md in the scanner inbox or above it). Every AI-naming workflow (`pdf-scanner-processor`, `pdf-alternating-merge` without an explicit `title`, `pdf-split`) loads them via the `load-naming-rules` activity (max. 4000 characters) and passes them to the model with priority over the base prompt. Without an AGENTS.md the LLM picks suitable names itself. The project defines no naming schema of its own, and AGENTS.md content is private — it is never reflected in this repository. Changes to AGENTS.md take effect from the next run, without a redeploy.
 
 ## Known limitations
 
 - **No moves between team stores**: the Nextcloud connector supports `files_move` only within one file area. Files that need to be sorted from the scanner inbox into another area are copied via `files_copy`; the originals in the scanner inbox have to be deleted by hand afterwards. A later step (an extension of pdf-scanner-processor) can move the sorting into the worker directly.
 - **No deletion via the connector**: `files_delete` does not exist. Whatever must be removed for good (duplicate parts, consumed originals) is cleaned up by the user by hand.
 - **OCR limits**: `ocrmypdf -j 1` per file and `MAX_CONCURRENT_OCR = 2` in parallel (memory protection of the managed instance); at most 200 files per pdf-ocr run. Large batches are better processed locally.
-- **OCR on health-insurance receipts** is unreliable (handwritten numbers); the AGENTS.md catches this with the `#xxxx` convention.
+- **OCR on handwritten content** (e.g. handwritten numbers on receipts) is unreliable; folder-specific AGENTS.md rules can catch such cases.

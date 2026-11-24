@@ -8,8 +8,8 @@ Alle Workflows:
 
 - werden manuell gestartet (Studio oder Chat bzw. MCP `execute_workflow`); die Steps werden zusätzlich von `pdf-scanner-processor` als Child-Workflows aufgerufen;
 - nutzen `apply_changes` (Standard `true`); `false` ist der Dry-Run: alles wird gelesen, geplant und geprüft, aber nichts geschrieben (auch keine Status-Rückmeldungen in Steuerdateien);
-- benennen Dateien nach dem Schema `YYYY-MM-DD kurze, beschreibende Bezeichnung.pdf` (ASCII, Umlaute transliteriert) — dieses Schema ist Teil des Basis-Prompts im Projekt;
-- lesen ordnerspezifische Benennungsregeln aus `<Ordner>/AGENTS.md` (max. 4000 Zeichen; fehlt die Datei: nur der Basis-Prompt), wann immer die KI benennt — z. B. personenbezogene Dokumente mit `(Vorname)` am Ende oder ein `#xxxx`-Marker; solche Details sind nicht Teil des Projekts, sie kommen aus der AGENTS.md des Ordners;
+- lassen Dateinamen von der KI wählen — das Projekt selbst definiert kein Namensschema, es bereinigt nur technisch (ASCII, Umlaute transliteriert, max. 80 Zeichen);
+- lesen die nächstliegende Benennungsregeln aus `AGENTS.md` (der Ordner selbst oder ein darüberliegender; max. 4000 Zeichen; existiert keine: wählt die KI selbst einen passenden Namen), wann immer die KI benennt; diese Regeln gehen vor dem Basis-Prompt und sind nicht Teil des Projekts;
 - überschreiben niemals Dateien (Kollisionen erhalten `_2`, `_3`, ...);
 - sichern Originale vor jeder Änderung unter `<Ordner>/.originals/<Workflow>/` (pro Workflow ggf. ein weiterer Unterordner: `pdf-split` und `pdf-alternating-merge` legen einen pro Datei/Ziel an, `pdf-ocr` und `pdf-scanner-processor` parken die Datei direkt); Backups sind in jedem Workflow standardmäßig an, und `.originals` wird nie durchsucht oder erneut verarbeitet.
 
@@ -46,7 +46,7 @@ Orchestrator über einen Scanner-Eingangsordner (nur erste Ordnerebene): OCR, Vo
 - `model`: LLM für die Prüfungen und die Benennung.
 - `merge_front_back: false` überspringt Paar-Erkennung/Mischen, `split_parts: false` überspringt den Split-Step.
 
-**Ablauf**: `Scan.pdf` / `ScanNNNN.pdf` finden → Kopie jedes Roh-Scans unter `.originals/pdf-scanner-processor/` parken → Child `pdf-ocr` auf den Ordner (eigene Backups unter `.originals/pdf-ocr/`) → Scans analysieren (Seitenzahl, Textebene, Textausschnitt) → Kandidaten für Vorder-/Rückseiten-Paare (aufeinanderfolgende Scan-Reihenfolge, gleiche Seitenzahl, Größenfaktor 0.5-2.0, beide mit Textebene) per LLM-Activity `front-back-check` bestätigen (Annahme ab confidence >= 0.7; die Prüfung ist namensunabhängig, Vorder- und Rückseite dürfen also völlig anders aussehen) → Child `pdf-alternating-merge` pro bestätigtem Paar mit dem Zwischen-Titel `ScanMerged<N>.pdf` (N = größere Scan-Nummer des Paares; Quellen archiviert unter `.originals/pdf-alternating-merge/<Ziel>/`) → jede Ergebnisdatei benennen (`name-document` mit den AGENTS.md-Regeln des Eingangsordners; gemischte Paare über den kombinierten Text) → nur bei sicherer Erkennung (>= 0.7) umbenennen, sonst `left_unchanged` → Child `pdf-split` pro Ergebnisdatei (teilt nur bei sicherer Erkennung).
+**Ablauf**: `Scan.pdf` / `ScanNNNN.pdf` finden → Kopie jedes Roh-Scans unter `.originals/pdf-scanner-processor/` parken → Child `pdf-ocr` auf den Ordner (eigene Backups unter `.originals/pdf-ocr/`) → Scans analysieren (Seitenzahl, Textebene, Textausschnitt) → Kandidaten für Vorder-/Rückseiten-Paare (aufeinanderfolgende Scan-Reihenfolge, gleiche Seitenzahl, Größenfaktor 0.5-2.0, beide mit Textebene) per LLM-Activity `front-back-check` bestätigen (Annahme ab confidence >= 0.7; die Prüfung ist namensunabhängig, Vorder- und Rückseite dürfen also völlig anders aussehen) → Child `pdf-alternating-merge` pro bestätigtem Paar mit dem Zwischen-Titel `ScanMerged<N>.pdf` (N = größere Scan-Nummer des Paares; Quellen archiviert unter `.originals/pdf-alternating-merge/<Ziel>/`) → jede Ergebnisdatei benennen (`name-document` mit den nächstliegenden AGENTS.md-Regeln — Eingangsordner oder ein Elternordner; gemischte Paare über den kombinierten Text) → nur bei sicherer Erkennung (>= 0.7) umbenennen, sonst `left_unchanged` → Child `pdf-split` pro Ergebnisdatei (teilt nur bei sicherer Erkennung).
 
 **Ergebnis**: `{folder, applied, actions[]}`; jeder Eintrag trägt `step` (`backup` / `ocr` / `front-back` / `merge` / `name` / `split`) plus die step-spezifischen Felder (`files`, `action`, `to`, `backup`, `confidence`, `result`, ...).
 
@@ -66,7 +66,7 @@ Alternierendes Mischen von Duplex-Paaren, entweder direkt per `pairs` im Start-I
 {"control_file": "/Ordner/steuerdatei.json", "apply_changes": true, "model": "mistral-small-latest"}
 ```
 
-Expliziter `title` gewinnt; sonst benennt die KI (`name-document` mit den AGENTS.md-Regeln des Ordners der Vorderseite). Unsichere Benennung markiert den Eintrag mit Fehler.
+Expliziter `title` gewinnt; sonst benennt die KI (`name-document` mit den nächstliegenden AGENTS.md-Regeln — Ordner der Vorderseite oder ein Elternordner). Unsichere Benennung markiert den Eintrag mit Fehler.
 
 **Ergebnis**: `{source, control_file, applied, processed, actions[]}` mit `action` pro Eintrag aus `planned` / `merged` / `error`.
 
@@ -97,6 +97,6 @@ Teilt eine PDF in Teile und benennt sie; Teile bleiben im Ordner der Originaldat
 - `titles`: explizite Teilnamen (Anzahl muss passen); schalten die AI-Benennung ab.
 - `name_parts` (Standard `true`): AI-Benennung; `false` => `<Stamm> Teil-N.pdf`.
 
-AI-benannte Teile heißen `<Titel>.pdf` (kein Stamm-Präfix), benannt nach den AGENTS.md-Regeln des Ordners.
+AI-benannte Teile heißen `<Titel>.pdf` (kein Stamm-Präfix), benannt nach den nächstliegenden AGENTS.md-Regeln.
 
 **Ergebnis**: `{target, applied, action, pages, parts[], original?}`; `action` aus `planned` / `split` / `no_split` / `clarification` / `error`, `parts` mit `pages` (z. B. `"1-2"`), `count`, `to`.

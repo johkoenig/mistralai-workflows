@@ -12,7 +12,7 @@ One repository, one managed deployment in your Mistral workspace, four workflows
 
 | Workflow | What it does |
 |---|---|
-| `pdf-scanner-processor` | End-to-end over a scanner inbox folder: OCR of new scans, front/back detection + alternating merge (intermediate `ScanMerged<N>.pdf`), LLM naming to `YYYY-MM-DD title.pdf`, confidence-checked split per file |
+| `pdf-scanner-processor` | End-to-end over a scanner inbox folder: OCR of new scans, front/back detection + alternating merge (intermediate `ScanMerged<N>.pdf`), LLM naming per the nearest AGENTS.md, confidence-checked split per file |
 
 **Steps** — each does exactly one task and is also startable on its own
 
@@ -46,17 +46,16 @@ All four are started **manually** (Studio, chat, or MCP `execute_workflow`) — 
 
 ## Conventions
 
-Built into the project (base prompt and code):
+Built into the project (code and base prompt):
 
-- Files are named `YYYY-MM-DD short, descriptive title.pdf` (ASCII, umlauts transliterated, max. 80 characters of title; without a reliable date just the title) — this date schema is part of the project's base prompt. Merged front/back pairs first get the intermediate name `ScanMerged<N>.pdf` (N = larger scan number of the pair) and are renamed to the final title afterwards.
-- Files are never overwritten (collisions get `_2`, `_3`, ...).
+- The project itself defines **no file name schema** — names are chosen by the LLM. The project only sanitizes names technically (ASCII, umlauts transliterated, max. 80 characters) and never overwrites files (collisions get `_2`, `_3`, ...). Merged front/back pairs first get the intermediate name `ScanMerged<N>.pdf` (N = larger scan number of the pair) and are renamed to the final name afterwards.
 - The LLM names and asks in the language of the document.
 - **Originals are always backed up** under `<folder>/.originals/<workflow>/` — on by default in all four workflows (split and merge use a subfolder per file/target). The workflows never delete anything; clean up `.originals/` by hand once you have verified the results.
 - OCR, download and upload activities send heartbeats: a crashed worker is detected within ~2 minutes and the activity is retried automatically.
 
-From your folder's `AGENTS.md` (folder-specific, **not part of this repository**):
+Naming conventions come from your `AGENTS.md` — **not part of this repository**:
 
-- Folder-specific naming rules — date-schema details, exceptions, qualifiers, e.g. personal documents with `(first name)` at the end or a `#xxxx` marker for health-insurance receipts — live in an `AGENTS.md` file in the respective folder and are passed to the LLM with priority over the base prompt (max. 4000 characters). If the file is missing, only the base prompt applies.
+- File name conventions (schema such as a date prefix, exceptions, qualifiers) live in an `AGENTS.md` in the respective folder **or a parent folder** — the nearest one wins. It is passed to the LLM with priority over the base prompt (max. 4000 characters). If no `AGENTS.md` exists anywhere up the tree, the LLM simply picks a suitable name itself. `AGENTS.md` content is private to your storage and is never reflected in this repository or its documentation.
 
 ## Privacy
 

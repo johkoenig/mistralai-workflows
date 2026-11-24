@@ -23,8 +23,9 @@ workflows in workflows/steps/ - each step is also directly triggerable on its ow
 4. Step pdf-alternating-merge per confirmed pair with the intermediate title
    "ScanMerged<N>.pdf" (N = larger scan number of the pair). The sources are
    archived under .originals/pdf-alternating-merge/<target>/.
-5. Naming via name-document (folder AGENTS.md rules included):
-   "YYYY-MM-DD short title.pdf" (or only a title without a reliable date).
+5. Naming via name-document: the naming conventions come from the nearest
+   AGENTS.md (the inbox folder or a parent folder) and take precedence over
+   the base prompt; without an AGENTS.md the LLM picks a suitable name itself.
    Confidence below the threshold -> left unchanged. Rename only.
 6. Step pdf-split per resulting file; it splits only when confident, otherwise
    the file stays as it is.
@@ -228,10 +229,10 @@ async def rename_scan_file(
     workflow_description=(
         "End-to-end processing of a scanner inbox folder: OCR of new scans, "
         "detection and alternating merge of front/back pairs (intermediate "
-        "ScanMerged<N>.pdf), LLM naming to YYYY-MM-DD title.pdf and a "
-        "confidence-checked split of multi-part PDFs - built from the step "
-        "workflows pdf-ocr, pdf-alternating-merge and pdf-split. Uncertain "
-        "cases are left unchanged."
+        "ScanMerged<N>.pdf), LLM naming (per the nearest AGENTS.md; without one "
+        "the LLM picks a suitable name) and a confidence-checked split of "
+        "multi-part PDFs - built from the step workflows pdf-ocr, "
+        "pdf-alternating-merge and pdf-split. Uncertain cases are left unchanged."
     ),
     on_behalf_of=True,
     execution_timeout=timedelta(hours=6),

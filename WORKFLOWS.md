@@ -8,8 +8,8 @@ All workflows:
 
 - are started manually (Studio or chat, or MCP `execute_workflow`); the steps are additionally called by `pdf-scanner-processor` as child workflows;
 - use `apply_changes` (default `true`); `false` is the dry run: everything is read, planned and checked, but nothing is written (not even status feedback into control files);
-- name files by the schema `YYYY-MM-DD short, descriptive title.pdf` (ASCII, umlauts transliterated) — this schema is part of the project's base prompt;
-- read folder-specific naming rules from `<folder>/AGENTS.md` (max. 4000 characters; if the file is missing: only the base prompt), whenever the AI names something — e.g. personal documents with `(first name)` at the end or a `#xxxx` marker; those details are not part of the project, they come from the folder's AGENTS.md;
+- let the LLM choose file names — the project itself defines no name schema, it only sanitizes technically (ASCII, umlauts transliterated, max. 80 characters);
+- read the nearest naming rules from `AGENTS.md` (the folder itself or a parent folder; max. 4000 characters; if none exists: the LLM picks a suitable name itself), whenever the AI names something; those rules take precedence over the base prompt and are not part of the project;
 - never overwrite files (collisions get `_2`, `_3`, ...);
 - secure originals under `<folder>/.originals/<workflow>/` before anything is modified (per-workflow subfolder where useful: `pdf-split` and `pdf-alternating-merge` create one per file/target, `pdf-ocr` and `pdf-scanner-processor` park the file directly); backups are on by default in every workflow, and `.originals` is never scanned or reprocessed.
 
@@ -43,7 +43,7 @@ Orchestrator over a scanner inbox folder (top folder level only): OCR, front/bac
 ```
 (The workspace secret `SCAN_INBOX_FOLDER` (environment variable in the deployment) applies when `folder_path` is omitted; `model` selects the LLM for the checks and naming; `merge_front_back: false` skips the pair detection/merge, `split_parts: false` skips the split step.)
 
-**Flow**: find `Scan.pdf` / `ScanNNNN.pdf` → park a copy of each raw scan under `.originals/pdf-scanner-processor/` → child `pdf-ocr` on the folder (its own backups under `.originals/pdf-ocr/`) → analyze the scans (page count, text layer, text snippet) → detect front/back candidates (consecutive scan order, same page count, size factor 0.5-2.0, both with text) and confirm each candidate with the LLM activity `front-back-check` (accept at confidence >= 0.7; the check is name-independent, so front and back may look completely different) → child `pdf-alternating-merge` per confirmed pair with the intermediate title `ScanMerged<N>.pdf` (N = larger scan number of the pair; sources archived under `.originals/pdf-alternating-merge/<target>/`) → name every resulting file (`name-document` with the AGENTS.md rules of the inbox folder; merged pairs via the combined text) → rename only when confident (>= 0.7), otherwise `left_unchanged` → child `pdf-split` per resulting file (splits only when confident).
+**Flow**: find `Scan.pdf` / `ScanNNNN.pdf` → park a copy of each raw scan under `.originals/pdf-scanner-processor/` → child `pdf-ocr` on the folder (its own backups under `.originals/pdf-ocr/`) → analyze the scans (page count, text layer, text snippet) → detect front/back candidates (consecutive scan order, same page count, size factor 0.5-2.0, both with text) and confirm each candidate with the LLM activity `front-back-check` (accept at confidence >= 0.7; the check is name-independent, so front and back may look completely different) → child `pdf-alternating-merge` per confirmed pair with the intermediate title `ScanMerged<N>.pdf` (N = larger scan number of the pair; sources archived under `.originals/pdf-alternating-merge/<target>/`) → name every resulting file (`name-document` with the nearest AGENTS.md rules — inbox folder or a parent folder; merged pairs via the combined text) → rename only when confident (>= 0.7), otherwise `left_unchanged` → child `pdf-split` per resulting file (splits only when confident).
 
 **Result**: `{folder, applied, actions[]}`; each action carries `step` (`backup` / `ocr` / `front-back` / `merge` / `name` / `split`) plus the step-specific fields (`files`, `action`, `to`, `backup`, `confidence`, `result`, ...).
 
@@ -64,7 +64,7 @@ Alternating merge of duplex pairs, either directly via `pairs` in the start inpu
 ```
 (`steuerdatei.json` is a German word for "control file"; the name is a convention, any filename works.)
 
-An explicit `title` wins; otherwise the AI names (`name-document` with the AGENTS.md rules of the front page's folder). Uncertain naming marks the entry with an error.
+An explicit `title` wins; otherwise the AI names (`name-document` with the nearest AGENTS.md rules — the front page's folder or a parent folder). Uncertain naming marks the entry with an error.
 
 **Result**: `{source, control_file, applied, processed, actions[]}` with `action` per entry from `planned` / `merged` / `error`.
 
@@ -95,6 +95,6 @@ Splits a PDF into parts and names them; the parts stay in the folder of the orig
 - `titles`: explicit part names (count must match); disable AI naming.
 - `name_parts` (default `true`): AI naming; `false` => `<stem> Teil-N.pdf`.
 
-AI-named parts are called `<title>.pdf` (no stem prefix), named by the AGENTS.md rules of the folder.
+AI-named parts are called `<title>.pdf` (no stem prefix), named by the nearest AGENTS.md rules.
 
 **Result**: `{target, applied, action, pages, parts[], original?}`; `action` from `planned` / `split` / `no_split` / `clarification` / `error`, `parts` with `pages` (e.g. `"1-2"`), `count`, `to`.

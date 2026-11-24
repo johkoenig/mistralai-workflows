@@ -33,9 +33,12 @@ workflows with deterministic execution IDs.
 
 ## Storage and naming conventions
 
-- Targets: YYYY-MM-DD short, descriptive title.pdf (ASCII, umlauts
-  transliterated, max. 80 characters of title; without a reliable date
-  just the title).
+- Naming conventions are NOT part of the project: the nearest AGENTS.md
+  (the folder itself or a parent folder) defines them and takes precedence
+  over the base prompt; without an AGENTS.md the LLM picks a suitable name
+  itself. The project only sanitizes file names technically (ASCII, umlauts
+  transliterated, max. 80 characters) and never overwrites (counter
+  suffixes).
 - A merged front/back pair first gets the intermediate name
   ScanMerged<N>.pdf (N = larger scan number of the pair); the orchestrator
   renames it to the final title in the naming step. ScanMerged*.pdf does not
@@ -99,9 +102,10 @@ pdf-split has two AI steps, both individually switchable:
   mode as a separate call against fixed split points); false => fallback
   <stem> Teil-N. Explicit titles disable AI naming.
 - Folder-specific naming rules apply to every AI naming: the shared
-  load-naming-rules activity in worker/pdf_ops.py reads
-  <folder>/AGENTS.md (max. 4000 characters; if missing: empty) and
-  appends it to the prompt (it has priority in title selection). pdf-split
+  load-naming-rules activity in worker/pdf_ops.py reads the nearest
+  AGENTS.md (<folder> or a parent folder; max. 4000 characters; if none:
+  empty) and appends it to the prompt (it has priority over the base
+  prompt). pdf-split
   uses the folder of the target PDF, pdf-scanner-processor loads the
   rules once per run from the inbox folder, pdf-alternating-merge without an
   explicit title from the folder of the front page (name_document accepts

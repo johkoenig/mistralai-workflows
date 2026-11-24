@@ -47,11 +47,11 @@ Erkennung nach jedem Start: der Worker registriert automatisch alle Workflow-Mod
 
 ## Benennungsregeln (AGENTS.md)
 
-Ordnerspezifische Benennungsregeln liegen als `AGENTS.md` im jeweils betroffenen Ordner (z. B. Scanner-Eingang; Standardschema mit Datum, Krankenkassenbeleg-Ausnahme `#xxxx ...` und Personen-Klammer). Jeder AI-benannte Workflow (`pdf-scanner-processor`, `pdf-alternating-merge` ohne expliziten `title`, `pdf-split`) lädt sie über die Activity `load-naming-rules` (max. 4000 Zeichen) und gibt sie dem Modell mit Vorrang vor dem Basis-Prompt. Änderungen an der AGENTS.md wirken ohne Redeploy ab dem nächsten Lauf.
+Ordnerspezifische Benennungsregeln liegen als `AGENTS.md` im jeweiligen Ordner oder einem Elternordner — die nächstliegende gewinnt (z. B. eine AGENTS.md im Scanner-Eingang oder darüber). Jeder AI-benannte Workflow (`pdf-scanner-processor`, `pdf-alternating-merge` ohne expliziten `title`, `pdf-split`) lädt sie über die Activity `load-naming-rules` (max. 4000 Zeichen) und gibt sie dem Modell mit Vorrang vor dem Basis-Prompt. Ohne AGENTS.md wählt das LLM selbst passende Namen. Das Projekt definiert kein eigenes Namensschema, und AGENTS.md-Inhalt ist privat — er wird weder in diesem Repository noch in dessen Doku gespiegelt. Änderungen an der AGENTS.md wirken ohne Redeploy ab dem nächsten Lauf.
 
 ## Bekannte Einschränkungen
 
 - **Kein Verschieben zwischen Team-Speichern**: Der Nextcloud-Connector unterstützt `files_move` nur innerhalb eines Dateibereichs. Dateien, die aus dem Scanner-Eingang (`<Scanner-Eingang>`) in einen anderen Bereich (`<Zielordner>`) einsortiert werden sollen, werden per `files_copy` übernommen; die Originale im Scanner-Eingang sind danach von Hand zu löschen. Ein späterer Arbeitsschritt (eine Erweiterung von pdf-scanner-processor) kann das Einsortieren im Worker direkt übernehmen.
 - **Kein Löschen über den Connector**: `files_delete` existiert nicht. Was endgültig entfernt werden muss (dublette Teile, verbrauchte Originale), räumt der Nutzer von Hand.
 - **OCR-Limits**: `ocrmypdf -j 1` je Datei und `MAX_CONCURRENT_OCR = 2` parallel (Speicherschutz der Managed-Instanz); pro pdf-ocr-Lauf maximal 200 Dateien. Große Konvolute besser lokal verarbeiten.
-- **OCR auf Krankenkassenbelegen** ist unzuverlässig (handschriftliche Nummern); die AGENTS.md fängt das über die `#xxxx`-Konvention ab.
+- **OCR bei handschriftlichen Inhalten** (z. B. handschriftliche Nummern auf Belegen) ist unzuverlässig; ordnerspezifische AGENTS.md-Regeln können solche Fälle abfangen.

@@ -102,3 +102,75 @@ async def test_front_back_check_rejects_unparseable_response(
     assert result["is_front_back"] is False
     assert result["confidence"] == 0.0
     assert result["reason"] == ""
+
+
+class TestNamingRulesAreAgentsMdDriven:
+    @pytest.mark.parametrize(
+        ("folder", "expected"),
+        [
+            (
+                "/Dokumente/Scans/Inbox",
+                [
+                    "/Dokumente/Scans/Inbox/AGENTS.md",
+                    "/Dokumente/Scans/AGENTS.md",
+                    "/Dokumente/AGENTS.md",
+                    "/AGENTS.md",
+                ],
+            ),
+            ("/Dokumente", ["/Dokumente/AGENTS.md", "/AGENTS.md"]),
+            ("SCANNER_INBOX", ["SCANNER_INBOX/AGENTS.md", "AGENTS.md"]),
+            ("/", ["/AGENTS.md"]),
+        ],
+    )
+    def test_agents_md_candidates_walk_up_to_root(self, folder, expected):
+        assert pdf_ops.agents_md_candidates(folder) == expected
+
+    def test_base_prompt_is_generic_about_the_name_schema(self):
+        # The file name schema is NOT part of the project: it must come from
+        # AGENTS.md rules, not from the base prompt.
+        assert "YYYY-MM-DD short descriptive title.pdf" not in pdf_ops.SYSTEM_PROMPT
+        assert "AGENTS.md" in pdf_ops.SYSTEM_PROMPT
+
+    async def test_name_document_appends_agents_md_rules_with_precedence(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        chat = _FakeChat(
+            json.dumps({"date": "2026-11-22", "title": "Brief", "confidence": 0.9})
+        )
+        _patch_client(monkeypatch, chat)
+
+        await pdf_ops.name_document(
+            "some text", "mistral-small-latest", "Schema: YYYY-MM-DD Titel.pdf"
+        )
+
+        system = chat.calls[0]["messages"][0]["content"]
+        assert "Schema: YYYY-MM-DD Titel.pdf" in system
+        assert "take precedence" in system
+
+    async def test_load_naming_rules_falls_back_to_parent_folder(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(pdf_ops, "file_client", lambda connector="": object())
+
+        async def fake_read(nc: object, path: str) -> str | None:
+            return "Ordner-Regeln" if path == "/Dokumente/AGENTS.md" else None
+
+        monkeypatch.setattr(pdf_ops, "_read_rules_file", fake_read)
+
+        result = await pdf_ops.load_naming_rules("/Dokumente/Scans/Inbox")
+
+        assert result == {"rules": "Ordner-Regeln", "source": "/Dokumente/AGENTS.md"}
+
+    async def test_load_naming_rules_empty_when_no_agents_md_anywhere(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(pdf_ops, "file_client", lambda connector="": object())
+
+        async def fake_read(nc: object, path: str) -> str | None:
+            return None
+
+        monkeypatch.setattr(pdf_ops, "_read_rules_file", fake_read)
+
+        result = await pdf_ops.load_naming_rules("/Dokumente/Scans/Inbox")
+
+        assert result == {"rules": "", "source": None}

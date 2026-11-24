@@ -89,15 +89,16 @@ UMLAUT_MAP = {
     "ß": "ss",
 }
 SYSTEM_PROMPT = (
-    "You receive the OCR text of a scanned document. Derive a file name "
-    'following the pattern "YYYY-MM-DD short descriptive title.pdf". Rules: '
-    "1) The date comes first and is taken from the document (preferably the date stamp "
-    "at the top of the document, e.g. invoice or letter date); if no reliable date "
-    'is evident, return "date": null. '
-    '2) "title" is a short, meaningful name in the language of the document (and of '
-    "the user's folder rules), with document type and, where evident, sender, "
-    "organization or subject (max 80 characters). "
-    '3) "confidence" (0.0 to 1.0) rates how certain you are about date and title overall; '
+    "You receive the OCR text of a scanned document. Derive a suitable file name "
+    "for it (without the .pdf extension). Naming conventions are NOT defined here: "
+    "they come from the AGENTS.md rules appended below when present; without such "
+    "rules, simply choose a fitting name yourself. Rules: "
+    '1) "title" is a short, meaningful file name in the language of the document, '
+    "with document type and, where evident, sender, organization or subject "
+    "(max 80 characters). "
+    '2) "date" is the document date as YYYY-MM-DD, but only when the naming rules '
+    "require a date in the file name; otherwise null. "
+    '3) "confidence" (0.0 to 1.0) rates how certain you are about the name overall; '
     "use a low value when unsure. "
     'Answer with JSON only: {"date": "YYYY-MM-DD" or null, "title": "...", '
     '"confidence": 0.0 to 1.0}.'
@@ -438,9 +439,9 @@ async def name_document(
     system = SYSTEM_PROMPT
     if naming_rules and naming_rules.strip():
         system += (
-            "\n\nAdditional naming rules for the titles "
-            "(from the folder's AGENTS.md; these rules take precedence in "
-            "title selection):\n---\n" + naming_rules.strip() + "\n---"
+            "\n\nNaming rules from the nearest AGENTS.md (the folder itself or a "
+            "parent folder); they take precedence over this base prompt, including "
+            "any file name schema:\n---\n" + naming_rules.strip() + "\n---"
         )
     client = get_mistral_client()
     messages: list[ChatCompletionRequestMessageTypedDict] = [
@@ -629,9 +630,8 @@ async def plan_split(
 
     Without fixed_split_at, split points and titles are planned; with
     fixed_split_at only the titles for already fixed split points.
-    naming_rules contains the content of an optional AGENTS.md from the
-    target file's folder (folder-specific naming rules, empty when the
-    file is missing).
+    naming_rules contains the content of the nearest AGENTS.md (target file's
+    folder or a parent folder; empty when none exists).
     """
     pages = "\n\n".join(
         f"=== page {number} ===\n{(text or '')[:SPLIT_TEXT_PER_PAGE]}"
@@ -640,9 +640,10 @@ async def plan_split(
     system = SPLIT_SYSTEM_PROMPT
     if naming_rules and naming_rules.strip():
         system += (
-            "\n\nAdditional naming rules for the part titles "
-            "(from the folder's AGENTS.md; these rules take precedence in "
-            "title selection):\n---\n" + naming_rules.strip() + "\n---"
+            "\n\nNaming rules from the nearest AGENTS.md (the folder itself or a "
+            "parent folder); they take precedence over this base prompt:\n---\n"
+            + naming_rules.strip()
+            + "\n---"
         )
     client = get_mistral_client()
     messages: list[ChatCompletionRequestMessageTypedDict] = [
@@ -675,34 +676,61 @@ def read_rules_text(path: str) -> str:
         return handle.read(NAMING_RULES_MAX_CHARS)
 
 
+def agents_md_candidates(folder: str) -> list[str]:
+    """AGENTS.md candidate paths from the folder up to the storage root, nearest first."""
+    current = folder.rstrip("/")
+    if not current and folder.startswith("/"):
+        current = "/"
+    candidates: list[str] = []
+    while True:
+        if current.strip("/"):
+            candidates.append(f"{current}/AGENTS.md")
+        elif current.startswith("/"):
+            candidates.append("/AGENTS.md")
+        else:
+            candidates.append("AGENTS.md")
+        if not current or not current.strip("/"):
+            break
+        parent = current.rsplit("/", 1)[0] if "/" in current else ""
+        current = parent if parent else ("/" if current.startswith("/") else "")
+    return candidates
+
+
+async def _read_rules_file(nc: ToolCallClient, path: str) -> str | None:
+    """Downloads and reads one AGENTS.md; None when it does not exist or is unreadable."""
+    workdir = tempfile.mkdtemp(prefix="rules-")
+    try:
+        checkout = await nc_call(
+            nc,
+            "files_checkout",
+            {"path": path, "confirm": True, "confirm_shared": True},
+        )
+        local = os.path.join(workdir, "AGENTS.md")
+        http_get(pick_url(checkout, "download_url", "downloadUrl"), local)
+        return await asyncio.to_thread(read_rules_text, local)
+    except Exception:
+        return None
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
 @workflows.activity(
     name="load-naming-rules",
     start_to_close_timeout=timedelta(minutes=5),
     retry_policy_max_attempts=2,
 )
 async def load_naming_rules(folder: str, connector: str = "") -> dict[str, Any]:
-    """Reads naming rules from <folder>/AGENTS.md; if missing: empty.
+    """Reads naming rules from the nearest AGENTS.md: <folder>/AGENTS.md or one in a parent folder; if none: empty.
 
-    Folder-specific naming rules (schemas, persons, exceptions such as
-    health-insurance receipts) live per folder as AGENTS.md and are passed
-    to all AI naming steps (name-document, plan-split).
+    Naming conventions (file name schema, exceptions, qualifiers) are not part
+    of the project: they live per folder tree as AGENTS.md and are passed to
+    all AI naming steps (name-document, plan-split), taking precedence over the
+    base prompt. Without an AGENTS.md the AI picks a suitable name itself.
     """
     nc = file_client(connector)
-    path = f"{folder.rstrip('/')}/AGENTS.md"
-    workdir = tempfile.mkdtemp(prefix="rules-")
-    try:
-        try:
-            checkout = await nc_call(
-                nc,
-                "files_checkout",
-                {"path": path, "confirm": True, "confirm_shared": True},
-            )
-            local = os.path.join(workdir, "AGENTS.md")
-            http_get(pick_url(checkout, "download_url", "downloadUrl"), local)
-            rules = await asyncio.to_thread(read_rules_text, local)
-        except Exception:
-            return {"rules": "", "source": None}
-        logger.info("naming rules loaded: %s (%d chars)", path, len(rules))
-        return {"rules": rules, "source": path}
-    finally:
-        shutil.rmtree(workdir, ignore_errors=True)
+    for path in agents_md_candidates(folder):
+        rules = await _read_rules_file(nc, path)
+        if rules is not None:
+            logger.info("naming rules loaded: %s (%d chars)", path, len(rules))
+            return {"rules": rules, "source": path}
+    return {"rules": "", "source": None}

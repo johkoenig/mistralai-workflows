@@ -33,8 +33,12 @@ deterministischen Ausfuehrungs-IDs.
 
 ## Ablage- und Benennungskonventionen
 
-- Ziele: YYYY-MM-DD kurze, beschreibende Bezeichnung.pdf (ASCII, Umlaute
-  transliteriert, max. 80 Zeichen Titel; ohne verlaessliches Datum nur die Bezeichnung).
+- Benennungskonventionen sind NICHT Teil des Projekts: die naechstliegende
+  AGENTS.md (der Ordner selbst oder ein Elternordner) definiert sie und hat
+  Vorrang vor dem Basis-Prompt; ohne AGENTS.md waehlt das LLM selbst einen
+  passenden Namen. Das Projekt bereinigt Dateinamen nur technisch (ASCII,
+  Umlaute transliteriert, max. 80 Zeichen) und ueberschreibt nie
+  (Zaehler-Suffixe).
 - Ein gemischtes Vorder-/Rueckseiten-Paar bekommt zunaechst den Zwischennamen
   ScanMerged<N>.pdf (N = groessere Scan-Nummer des Paares); der Orchestrator
   benennt ihn im Benennungsschritt in den endgueltigen Titel um. ScanMerged*.pdf
@@ -97,9 +101,10 @@ pdf-split kennt zwei AI-Schritte, beide einzeln abschaltbar:
   Modus als separater Aufruf gegen feste Trennstellen); false => Fallback
   <Stamm> Teil-N. Explizite titles schalten die AI-Benennung ab.
 - Ordnerspezifische Benennungsregeln gelten fuer jede AI-Benennung: die
-  gemeinsame load-naming-rules-Activity in worker/pdf_ops.py liest
-  <Ordner>/AGENTS.md (max. 4000 Zeichen, fehlt sie: leer) und haengt sie im
-  Prompt an (hat Vorrang bei der Titelwahl). pdf-split nutzt den Ordner der
+  gemeinsame load-naming-rules-Activity in worker/pdf_ops.py liest die
+  naechstliegende AGENTS.md (<Ordner> oder ein Elternordner; max. 4000
+  Zeichen, fehlt sie: leer) und haengt sie im Prompt an (hat Vorrang vor
+  dem Basis-Prompt). pdf-split nutzt den Ordner der
   Ziel-PDF, pdf-scanner-processor laedt die Regeln einmal pro Lauf aus dem
   Eingangsordner, pdf-alternating-merge ohne expliziten title aus dem Ordner
   der Vorderseite (name_document nimmt naming_rules auf).

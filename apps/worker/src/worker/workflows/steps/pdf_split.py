@@ -19,10 +19,11 @@ Start input:
 - connector: name of the file connector from FILE_CONNECTOR_NAMES (empty = default);
   with several active Nextcloud connectors the caller selects the target connector
 
-Naming rules: before AI naming the workflow reads an AGENTS.md file
-from the target PDF's folder and passes it to the model as
-additional, folder-specific rules (max. 4000 characters). If the
-file is missing, the model names using only the base prompt. AI-named parts
+Naming rules: before AI naming the workflow reads the nearest AGENTS.md
+(the target PDF's folder or a parent folder) and passes it to the model as
+additional rules that take precedence over the base prompt (max. 4000
+characters). If no AGENTS.md exists, the model picks suitable names itself.
+AI-named parts
 are called "<title>.pdf" (without the original stem prefix); the original
 is stored with its full name under .originals/pdf-split/.
 
@@ -370,7 +371,8 @@ async def split_file(
         "the PDF is cut - the given page stays in the previous part (example: "
         "[2, 4] on 8 pages yields parts 1-2, 3-4, 5-8). A dry run "
         "(apply_changes=false) reports the page range of every part before "
-        "anything is written. Naming rules may live as AGENTS.md in the folder. "
+        "anything is written. Naming rules come from the nearest AGENTS.md (the "
+        "folder or a parent folder); without one the LLM picks suitable names. "
         "When unsure, the workflow asks back without writing. Parts stay in the "
         "original file's folder, the original is secured under "
         ".originals/pdf-split/."
