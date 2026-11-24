@@ -54,7 +54,7 @@ Run them locally before pushing. A red local run does not become a PR.
 
 - Any new or changed workflow behavior: update `WORKFLOWS.md` **and** `WORKFLOWS.de.md` in the same PR.
 - New activities, start inputs, states or vocabulary: follow the `ARCHITECTURE.md` vocabulary from the consistency run (PR #15) and update both language versions.
-- Every PR adds an entry to `CHANGELOG.md` and `CHANGELOG.de.md`.
+- Every PR adds an entry to `CHANGELOG.md` and `CHANGELOG.de.md`, following the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format (versioned sections, `Added`/`Changed`/`Removed`/`Fixed` subsections, link definitions at the bottom).
 - Operational procedures change: update `OPERATIONS.md` and `OPERATIONS.de.md`.
 - English files are the source of truth; the `.de` mirror is updated in the same commit, not later.
 
