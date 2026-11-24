@@ -19,7 +19,7 @@ Ein Repository, ein Managed Deployment. Konkret gerundete Parameter des Deployme
 
 Das Worker-Image installiert systemseitig `ghostscript`, `tesseract-ocr-all` und `jbig2dec` (Paketliste: `deploy/docker/worker-packages/workflows.txt`).
 
-Erkennung nach jedem Start: der Worker registriert automatisch alle Workflow-Module aus `apps/worker/src/worker/workflows/` (`discover_all_workflows_in_package`). Im Normalbetrieb müssen vier Workflows und alle Activities aus der [WORKFLOWS.md](WORKFLOWS.de.md) in den Logs auftauchen, ohne OOM- oder Importfehler.
+Erkennung nach jedem Start: der Worker registriert automatisch alle Workflow-Module aus `apps/worker/src/worker/workflows/` (rekursiv, inklusive `workflows/steps/`) per `discover_all_workflows_in_package`. Im Normalbetrieb müssen die vier Workflows `pdf-scanner-processor`, `pdf-ocr`, `pdf-alternating-merge`, `pdf-split` und alle Activities aus der [WORKFLOWS.md](WORKFLOWS.de.md) in den Logs auftauchen, ohne OOM- oder Importfehler.
 
 ## Qualitaets-Gates (CI)
 
@@ -43,15 +43,15 @@ Erkennung nach jedem Start: der Worker registriert automatisch alle Workflow-Mod
 
 - **Dry-Run zuerst**: neue oder geänderte Workflows immer zuerst mit `apply_changes: false` gegen ein echtes Dokument prüfen.
 - **Manuelle Starts nur**: kein Zeitplan, kein Webhook; Begründung in ARCHITECTURE.md. Sperrige Verarbeitung erst nach vollständigem Scanvorgang.
-- **Originale bleiben**: jedes Workflow sichert Originale standardmäßig unter `<Ordner>/.originals/<Workflow>/` (Split: Unterordner `<Stamm>/`, Duplex-Mischung: Unterordner `<Zielname>/`, OCR und Triage: die Datei selbst). Aufzuräumen ist von Hand, wenn die Ergebnisse geprüft sind; die Workflows löschen nie.
+- **Originale bleiben**: jedes Workflow sichert Originale standardmäßig unter `<Ordner>/.originals/<Workflow>/` (Split: Unterordner `<Stamm>/`, alternierendes Mischen: Unterordner `<Zielname>/`, OCR und pdf-scanner-processor: die Datei selbst). Aufzuräumen ist von Hand, wenn die Ergebnisse geprüft sind; die Workflows löschen nie.
 
 ## Benennungsregeln (AGENTS.md)
 
-Ordnerspezifische Benennungsregeln liegen als `AGENTS.md` im jeweils betroffenen Ordner (z. B. Scanner-Eingang; Standardschema mit Datum, Krankenkassenbeleg-Ausnahme `#xxxx ...` und Personen-Klammer). Jeder AI-benannte Workflow (`pdf-scan-inbox-triage`, `pdf-merge-duplex` ohne expliziten `title`, `pdf-split`) lädt sie über die Activity `load-naming-rules` (max. 4000 Zeichen) und gibt sie dem Modell mit Vorrang vor dem Basis-Prompt. Änderungen an der AGENTS.md wirken ohne Redeploy ab dem nächsten Lauf.
+Ordnerspezifische Benennungsregeln liegen als `AGENTS.md` im jeweiligen Ordner oder einem Elternordner — die nächstliegende gewinnt (z. B. eine AGENTS.md im Scanner-Eingang oder darüber). Jeder AI-benannte Workflow (`pdf-scanner-processor`, `pdf-alternating-merge` ohne expliziten `title`, `pdf-split`) lädt sie über die Activity `load-naming-rules` (max. 4000 Zeichen) und gibt sie dem Modell mit Vorrang vor dem Basis-Prompt. Ohne AGENTS.md wählt das LLM selbst passende Namen. Das Projekt definiert kein eigenes Namensschema, und AGENTS.md-Inhalt ist privat — er wird weder in diesem Repository noch in dessen Doku gespiegelt. Änderungen an der AGENTS.md wirken ohne Redeploy ab dem nächsten Lauf.
 
 ## Bekannte Einschränkungen
 
-- **Kein Verschieben zwischen Team-Speichern**: Der Nextcloud-Connector unterstützt `files_move` nur innerhalb eines Dateibereichs. Dateien, die aus dem Scanner-Eingang (`<Scanner-Eingang>`) in einen anderen Bereich (`<Zielordner>`) einsortiert werden sollen, werden per `files_copy` übernommen; die Originale im Scanner-Eingang sind danach von Hand zu löschen. Ein späterer Arbeitsschritt (Triage-Erweiterung) kann das Einsortieren im Worker direkt übernehmen.
+- **Kein Verschieben zwischen Team-Speichern**: Der Nextcloud-Connector unterstützt `files_move` nur innerhalb eines Dateibereichs. Dateien, die aus dem Scanner-Eingang (`<Scanner-Eingang>`) in einen anderen Bereich (`<Zielordner>`) einsortiert werden sollen, werden per `files_copy` übernommen; die Originale im Scanner-Eingang sind danach von Hand zu löschen. Ein späterer Arbeitsschritt (eine Erweiterung von pdf-scanner-processor) kann das Einsortieren im Worker direkt übernehmen.
 - **Kein Löschen über den Connector**: `files_delete` existiert nicht. Was endgültig entfernt werden muss (dublette Teile, verbrauchte Originale), räumt der Nutzer von Hand.
 - **OCR-Limits**: `ocrmypdf -j 1` je Datei und `MAX_CONCURRENT_OCR = 2` parallel (Speicherschutz der Managed-Instanz); pro pdf-ocr-Lauf maximal 200 Dateien. Große Konvolute besser lokal verarbeiten.
-- **OCR auf Krankenkassenbelegen** ist unzuverlässig (handschriftliche Nummern); die AGENTS.md fängt das über die `#xxxx`-Konvention ab.
+- **OCR bei handschriftlichen Inhalten** (z. B. handschriftliche Nummern auf Belegen) ist unzuverlässig; ordnerspezifische AGENTS.md-Regeln können solche Fälle abfangen.

@@ -10,8 +10,8 @@ from mistralai import workflows
 from mistralai.workflows.testing import create_test_worker
 from pypdf import PdfReader, PdfWriter
 from worker import pdf_ops
-from worker.workflows import pdf_split
-from worker.workflows.pdf_split import (
+from worker.workflows.steps import pdf_split
+from worker.workflows.steps.pdf_split import (
     PdfSplitInput,
     PdfSplitWorkflow,
     part_filename,

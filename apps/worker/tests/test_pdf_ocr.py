@@ -8,8 +8,8 @@ from typing import Any
 from mistralai import workflows
 from mistralai.workflows.testing import create_test_worker
 from worker import ocr, pdf_ops
-from worker.workflows import pdf_ocr
-from worker.workflows.pdf_ocr import PdfOcrInput, PdfOcrWorkflow
+from worker.workflows.steps import pdf_ocr
+from worker.workflows.steps.pdf_ocr import PdfOcrInput, PdfOcrWorkflow
 
 
 def _entry(name: str, size: int = 1000, is_dir: bool = False) -> dict:
@@ -60,7 +60,7 @@ class _FakeNC:
 
 class TestBackupHelpers:
     async def test_park_original_copies_with_unique_name(self):
-        root = "/D/.originals/pdf-scan-inbox-triage"
+        root = "/D/.originals/pdf-scanner-processor"
         nc = _FakeNC({root: [{"name": "Scan0000.pdf"}]})
         dest = await pdf_ops.park_original(nc, "/D/Scan0000.pdf", root)
         assert dest == f"{root}/Scan0000_2.pdf"

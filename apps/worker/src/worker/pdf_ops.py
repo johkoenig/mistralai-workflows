@@ -1,14 +1,13 @@
 """Shared building blocks of all workflows of this app.
 
-Pure logic (naming rules, duplex interleaving, pair detection) and the shared
-name-document activity live here, so naming behavior and the merge algorithm
-exist exactly once.
+Pure logic (naming rules, duplex interleaving, front/back detection) and the
+shared LLM activities (name-document, front-back-check, plan-split) live here,
+so naming behavior and the merge algorithm exist exactly once.
 """
 
 from __future__ import annotations
 
 import asyncio
-import difflib
 import json
 import logging
 import os
@@ -65,10 +64,11 @@ logger = logging.getLogger("worker.pdf_ops")
 
 DATE_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
 TEXT_SNIPPET_CHARS = 6000
-COMPARE_TEXT_CHARS = 4000
-PAIR_SIZE_RATIO_MIN = 0.5
-PAIR_SIZE_RATIO_MAX = 2.0
-PAIR_MIN_SIMILARITY = 0.4
+# Structural prefilter for front/back candidates (size ratio of the two scans).
+FRONT_BACK_SIZE_RATIO_MIN = 0.5
+FRONT_BACK_SIZE_RATIO_MAX = 2.0
+# Acceptance threshold of the front-back-check LLM activity.
+FRONT_BACK_MIN_CONFIDENCE = 0.7
 NAME_MAX_CHARS = 80
 MIN_NAMING_CONFIDENCE = 0.7
 # Memory guard: parallel OCR with -j 1 per file, uniform across all workflows.
@@ -89,15 +89,16 @@ UMLAUT_MAP = {
     "ß": "ss",
 }
 SYSTEM_PROMPT = (
-    "You receive the OCR text of a scanned document. Derive a file name "
-    'following the pattern "YYYY-MM-DD short descriptive title.pdf". Rules: '
-    "1) The date comes first and is taken from the document (preferably the date stamp "
-    "at the top of the document, e.g. invoice or letter date); if no reliable date "
-    'is evident, return "date": null. '
-    '2) "title" is a short, meaningful name in the language of the document (and of '
-    "the user's folder rules), with document type and, where evident, sender, "
-    "organization or subject (max 80 characters). "
-    '3) "confidence" (0.0 to 1.0) rates how certain you are about date and title overall; '
+    "You receive the OCR text of a scanned document. Derive a suitable file name "
+    "for it (without the .pdf extension). Naming conventions are NOT defined here: "
+    "they come from the AGENTS.md rules appended below when present; without such "
+    "rules, simply choose a fitting name yourself. Rules: "
+    '1) "title" is a short, meaningful file name in the language of the document, '
+    "with document type and, where evident, sender, organization or subject "
+    "(max 80 characters). "
+    '2) "date" is the document date as YYYY-MM-DD, but only when the naming rules '
+    "require a date in the file name; otherwise null. "
+    '3) "confidence" (0.0 to 1.0) rates how certain you are about the name overall; '
     "use a low value when unsure. "
     'Answer with JSON only: {"date": "YYYY-MM-DD" or null, "title": "...", '
     '"confidence": 0.0 to 1.0}.'
@@ -149,28 +150,6 @@ def unique_filename(base: str, taken: set[str]) -> str:
     return f"{stem}_{counter}.{ext}"
 
 
-def normalize_text(text: str) -> str:
-    """ASCII-normalized lowercase text as the basis for similarity comparisons."""
-    normalized = (
-        unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
-    )
-    return re.sub(r"[^a-z0-9]+", " ", normalized.lower()).strip()
-
-
-def text_similarity(a: str, b: str) -> float:
-    """Similarity of two texts: maximum of sequence ratio and Jaccard, 0 to 1."""
-    norm_a = normalize_text(a)[:COMPARE_TEXT_CHARS]
-    norm_b = normalize_text(b)[:COMPARE_TEXT_CHARS]
-    if not norm_a or not norm_b:
-        return 0.0
-    ratio = difflib.SequenceMatcher(None, norm_a, norm_b).ratio()
-    tokens_a = set(norm_a.split())
-    tokens_b = set(norm_b.split())
-    union = tokens_a | tokens_b
-    jaccard = len(tokens_a & tokens_b) / len(union) if union else 0.0
-    return max(ratio, jaccard)
-
-
 def interleave_order(page_count: int) -> list[tuple[str, int]]:
     """Front pages in scan order, each followed by its back page (reverse order)."""
     order: list[tuple[str, int]] = []
@@ -180,10 +159,38 @@ def interleave_order(page_count: int) -> list[tuple[str, int]]:
     return order
 
 
-def detect_pairs(
+SCAN_NAME_RE = re.compile(r"^Scan(\d{4})?\.pdf$", re.IGNORECASE)
+
+
+def scan_order(name: str) -> int | None:
+    """Scan number from the name; Scan.pdf counts as first (-1), otherwise None."""
+    match = SCAN_NAME_RE.match(name)
+    if not match:
+        return None
+    digits = match.group(1)
+    return -1 if digits is None else int(digits)
+
+
+def merged_scan_name(orders: list[int]) -> str:
+    """Intermediate file name of a merged front/back pair.
+
+    ScanMerged<N>.pdf with N = the larger scan number of the pair, so there is
+    always a number (also for a pair with Scan.pdf). Does not match
+    SCAN_NAME_RE, so merged files are not picked up as new scans on later runs.
+    """
+    return f"ScanMerged{max(orders):04d}.pdf"
+
+
+def detect_front_back(
     files: list[dict[str, Any]],
 ) -> list[tuple[dict[str, Any], dict[str, Any]]]:
-    """Pair consecutive scans that look like front/back halves of one duplex document."""
+    """Candidate front/back pairs: consecutive scans, equal page count, similar size, both with text.
+
+    Deliberately name-independent and without lexical text comparison: front and
+    back of one duplex document can look completely different (date only on page
+    1, invoice spillover), so the content check happens afterwards via the
+    front-back-check LLM activity on these candidates.
+    """
     ordered = sorted(files, key=lambda f: f["order"])
     pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
     consumed: set[str] = set()
@@ -196,45 +203,13 @@ def detect_pairs(
         if first["size"] == 0 or second["size"] == 0:
             continue
         ratio = first["size"] / second["size"]
-        if not PAIR_SIZE_RATIO_MIN <= ratio <= PAIR_SIZE_RATIO_MAX:
+        if not FRONT_BACK_SIZE_RATIO_MIN <= ratio <= FRONT_BACK_SIZE_RATIO_MAX:
             continue
         if not first["has_text"] or not second["has_text"]:
-            continue
-        if text_similarity(first["text"], second["text"]) < PAIR_MIN_SIMILARITY:
             continue
         pairs.append((first, second))
         consumed.update({first["path"], second["path"]})
     return pairs
-
-
-GERMAN_HINT_WORDS = (
-    " der ",
-    " die ",
-    " und ",
-    " nicht ",
-    " ist ",
-    " mit ",
-    " rechnung",
-    " datum",
-    " absender",
-)
-
-
-def front_back_suffixes(text: str) -> tuple[str, str]:
-    """Front/back page suffixes in the document's language.
-
-    German umlauts or at least two typical German words in the text mean a
-    German document ("Vorderseite"/"Rueckseite"); everything else gets the
-    English "Front"/"Back". The LLM titles already follow the document
-    language via the naming prompt; this covers the code-added suffixes.
-    """
-    lowered = f" {text.lower()} "
-    if (
-        any(char in text for char in "äöüß")
-        or sum(1 for word in GERMAN_HINT_WORDS if word in lowered) >= 2
-    ):
-        return "Vorderseite", "Rueckseite"
-    return "Front", "Back"
 
 
 def merge_texts(front_text: str, back_text: str) -> str:
@@ -348,8 +323,8 @@ def originals_dir(folder: str, workflow: str) -> str:
     """Uniform storage location for secured originals.
 
     <folder>/.originals/<workflow>. Whether a further subfolder per file is
-    created below it depends on the workflow (pdf-split and pdf-merge-duplex
-    use one, pdf-ocr and pdf-scan-inbox-triage park the file directly), so
+    created below it depends on the workflow (pdf-split and pdf-alternating-merge
+    use one, pdf-ocr and pdf-scanner-processor park the file directly), so
     repeated runs never overwrite anything.
     """
     return f"{folder.rstrip('/')}/{ORIGINALS_DIR_NAME}/{workflow}"
@@ -464,9 +439,9 @@ async def name_document(
     system = SYSTEM_PROMPT
     if naming_rules and naming_rules.strip():
         system += (
-            "\n\nAdditional naming rules for the titles "
-            "(from the folder's AGENTS.md; these rules take precedence in "
-            "title selection):\n---\n" + naming_rules.strip() + "\n---"
+            "\n\nNaming rules from the nearest AGENTS.md (the folder itself or a "
+            "parent folder); they take precedence over this base prompt, including "
+            "any file name schema:\n---\n" + naming_rules.strip() + "\n---"
         )
     client = get_mistral_client()
     messages: list[ChatCompletionRequestMessageTypedDict] = [
@@ -489,6 +464,62 @@ async def name_document(
     except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
         date, title, confidence = None, "", 0.0
     return {"date": date, "title": title, "confidence": max(0.0, min(1.0, confidence))}
+
+
+FRONT_BACK_SYSTEM_PROMPT = (
+    "You receive the OCR texts of two scans A and B that were scanned one after "
+    "the other and have the same page count. Decide whether B contains the back "
+    "sides of the same duplex document as A (front sides scanned as one stack in "
+    "order, back sides as a second stack in reverse order). Typical cases: a "
+    "letter whose back page carries only the remaining text and the signature, "
+    "or an invoice whose last lines spilled onto the next page - the back can "
+    "then look completely different from the front. Judge by content continuity "
+    "(subject, sender, document number, letterhead), not by similar wording. "
+    'Answer with JSON only: {"is_front_back": true/false, '
+    '"confidence": 0.0 to 1.0, "reason": "short justification in the language of the document"}.'
+)
+
+
+@workflows.activity(
+    name="front-back-check",
+    start_to_close_timeout=timedelta(minutes=5),
+    retry_policy_max_attempts=2,
+)
+async def front_back_check(
+    front_text: str, back_text: str, model: str
+) -> dict[str, Any]:
+    """LLM check whether scan B holds the back sides of the same duplex document as scan A."""
+    client = get_mistral_client()
+    messages: list[ChatCompletionRequestMessageTypedDict] = [
+        {"role": "system", "content": FRONT_BACK_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": (
+                f"Scan A text:\n{front_text[:TEXT_SNIPPET_CHARS]}\n\n"
+                f"Scan B text:\n{back_text[:TEXT_SNIPPET_CHARS]}"
+            ),
+        },
+    ]
+    response = client.chat.complete(
+        model=model,
+        messages=messages,
+        response_format={"type": "json_object"},
+        temperature=0.0,
+        top_p=1,
+    )
+    content = cast("AssistantMessage", response.choices[0].message).content
+    try:
+        data: Any = json.loads(content) if isinstance(content, str) else content
+        is_front_back = bool(data.get("is_front_back"))
+        confidence = float(data.get("confidence") or 0.0)
+        reason = str(data.get("reason") or "")
+    except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
+        is_front_back, confidence, reason = False, 0.0, ""
+    return {
+        "is_front_back": is_front_back,
+        "confidence": max(0.0, min(1.0, confidence)),
+        "reason": reason,
+    }
 
 
 SPLIT_TEXT_PER_PAGE = 1200
@@ -599,9 +630,8 @@ async def plan_split(
 
     Without fixed_split_at, split points and titles are planned; with
     fixed_split_at only the titles for already fixed split points.
-    naming_rules contains the content of an optional AGENTS.md from the
-    target file's folder (folder-specific naming rules, empty when the
-    file is missing).
+    naming_rules contains the content of the nearest AGENTS.md (target file's
+    folder or a parent folder; empty when none exists).
     """
     pages = "\n\n".join(
         f"=== page {number} ===\n{(text or '')[:SPLIT_TEXT_PER_PAGE]}"
@@ -610,9 +640,10 @@ async def plan_split(
     system = SPLIT_SYSTEM_PROMPT
     if naming_rules and naming_rules.strip():
         system += (
-            "\n\nAdditional naming rules for the part titles "
-            "(from the folder's AGENTS.md; these rules take precedence in "
-            "title selection):\n---\n" + naming_rules.strip() + "\n---"
+            "\n\nNaming rules from the nearest AGENTS.md (the folder itself or a "
+            "parent folder); they take precedence over this base prompt:\n---\n"
+            + naming_rules.strip()
+            + "\n---"
         )
     client = get_mistral_client()
     messages: list[ChatCompletionRequestMessageTypedDict] = [
@@ -645,34 +676,61 @@ def read_rules_text(path: str) -> str:
         return handle.read(NAMING_RULES_MAX_CHARS)
 
 
+def agents_md_candidates(folder: str) -> list[str]:
+    """AGENTS.md candidate paths from the folder up to the storage root, nearest first."""
+    current = folder.rstrip("/")
+    if not current and folder.startswith("/"):
+        current = "/"
+    candidates: list[str] = []
+    while True:
+        if current.strip("/"):
+            candidates.append(f"{current}/AGENTS.md")
+        elif current.startswith("/"):
+            candidates.append("/AGENTS.md")
+        else:
+            candidates.append("AGENTS.md")
+        if not current or not current.strip("/"):
+            break
+        parent = current.rsplit("/", 1)[0] if "/" in current else ""
+        current = parent if parent else ("/" if current.startswith("/") else "")
+    return candidates
+
+
+async def _read_rules_file(nc: ToolCallClient, path: str) -> str | None:
+    """Downloads and reads one AGENTS.md; None when it does not exist or is unreadable."""
+    workdir = tempfile.mkdtemp(prefix="rules-")
+    try:
+        checkout = await nc_call(
+            nc,
+            "files_checkout",
+            {"path": path, "confirm": True, "confirm_shared": True},
+        )
+        local = os.path.join(workdir, "AGENTS.md")
+        http_get(pick_url(checkout, "download_url", "downloadUrl"), local)
+        return await asyncio.to_thread(read_rules_text, local)
+    except Exception:
+        return None
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
 @workflows.activity(
     name="load-naming-rules",
     start_to_close_timeout=timedelta(minutes=5),
     retry_policy_max_attempts=2,
 )
 async def load_naming_rules(folder: str, connector: str = "") -> dict[str, Any]:
-    """Reads naming rules from <folder>/AGENTS.md; if missing: empty.
+    """Reads naming rules from the nearest AGENTS.md: <folder>/AGENTS.md or one in a parent folder; if none: empty.
 
-    Folder-specific naming rules (schemas, persons, exceptions such as
-    health-insurance receipts) live per folder as AGENTS.md and are passed
-    to all AI naming steps (name-document, plan-split).
+    Naming conventions (file name schema, exceptions, qualifiers) are not part
+    of the project: they live per folder tree as AGENTS.md and are passed to
+    all AI naming steps (name-document, plan-split), taking precedence over the
+    base prompt. Without an AGENTS.md the AI picks a suitable name itself.
     """
     nc = file_client(connector)
-    path = f"{folder.rstrip('/')}/AGENTS.md"
-    workdir = tempfile.mkdtemp(prefix="rules-")
-    try:
-        try:
-            checkout = await nc_call(
-                nc,
-                "files_checkout",
-                {"path": path, "confirm": True, "confirm_shared": True},
-            )
-            local = os.path.join(workdir, "AGENTS.md")
-            http_get(pick_url(checkout, "download_url", "downloadUrl"), local)
-            rules = await asyncio.to_thread(read_rules_text, local)
-        except Exception:
-            return {"rules": "", "source": None}
-        logger.info("naming rules loaded: %s (%d chars)", path, len(rules))
-        return {"rules": rules, "source": path}
-    finally:
-        shutil.rmtree(workdir, ignore_errors=True)
+    for path in agents_md_candidates(folder):
+        rules = await _read_rules_file(nc, path)
+        if rules is not None:
+            logger.info("naming rules loaded: %s (%d chars)", path, len(rules))
+            return {"rules": rules, "source": path}
+    return {"rules": "", "source": None}

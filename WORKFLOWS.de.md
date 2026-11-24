@@ -2,29 +2,29 @@
 
 # Workflow-Referenz
 
-Vollständige Referenz der vier Workflows des Deployments `mistralai-workflows`: Zweck, Start-Input, Ergebnisform und Beispiele. KI-generierte Namen, Titel und Rückfragen folgen der Sprache des Dokuments (entsprechende Anweisung in den Prompts). Konventionen und Architektur stehen in [ARCHITECTURE.md](ARCHITECTURE.de.md), Bedienung und Deployment-Betrieb in [README.md](README.de.md) und [OPERATIONS.md](OPERATIONS.de.md). Jeder Start-Input akzeptiert außerdem ein optionales Feld `connector`: der Name eines Datei-Connectors aus `FILE_CONNECTOR_NAMES` (leer = Default), damit ein Aufruf gezielt einen der konfigurierten Connector ansprechen kann.
+Vollständige Referenz der vier Workflows des Deployments `mistralai-workflows`: Zweck, Start-Input, Ergebnisform und Beispiele. Das Deployment ist ein zweistufiges System: `pdf-scanner-processor` (Orchestrator) steuert die drei spezialisierten Step-Workflows `pdf-ocr`, `pdf-alternating-merge` und `pdf-split` als Child-Workflows an — jeder Step ist auch einzeln startbar. KI-generierte Namen, Titel und Rückfragen folgen der Sprache des Dokuments (entsprechende Anweisung in den Prompts). Konventionen und Architektur stehen in [ARCHITECTURE.md](ARCHITECTURE.de.md), Bedienung und Deployment-Betrieb in [README.md](README.de.md) und [OPERATIONS.md](OPERATIONS.de.md). Jeder Start-Input akzeptiert außerdem ein optionales Feld `connector`: der Name eines Datei-Connectors aus `FILE_CONNECTOR_NAMES` (leer = Default), damit ein Aufruf gezielt einen der konfigurierten Connector ansprechen kann.
 
 Alle Workflows:
 
-- werden ausschließlich manuell gestartet (Studio oder Chat bzw. MCP `execute_workflow`);
+- werden manuell gestartet (Studio oder Chat bzw. MCP `execute_workflow`); die Steps werden zusätzlich von `pdf-scanner-processor` als Child-Workflows aufgerufen;
 - nutzen `apply_changes` (Standard `true`); `false` ist der Dry-Run: alles wird gelesen, geplant und geprüft, aber nichts geschrieben (auch keine Status-Rückmeldungen in Steuerdateien);
-- benennen Dateien nach dem Schema `YYYY-MM-DD kurze, beschreibende Bezeichnung.pdf` (ASCII, Umlaute transliteriert), personenbezogene Dokumente mit `(Vorname)` am Ende;
-- lesen ordnerspezifische Benennungsregeln aus `<Ordner>/AGENTS.md` (max. 4000 Zeichen; fehlt die Datei: nur der Basis-Prompt), wann immer die KI benennt;
+- lassen Dateinamen von der KI wählen — das Projekt selbst definiert kein Namensschema, es bereinigt nur technisch (ASCII, Umlaute transliteriert, max. 80 Zeichen);
+- lesen die nächstliegende Benennungsregeln aus `AGENTS.md` (der Ordner selbst oder ein darüberliegender; max. 4000 Zeichen; existiert keine: wählt die KI selbst einen passenden Namen), wann immer die KI benennt; diese Regeln gehen vor dem Basis-Prompt und sind nicht Teil des Projekts;
 - überschreiben niemals Dateien (Kollisionen erhalten `_2`, `_3`, ...);
-- sichern Originale vor jeder Änderung unter `<Ordner>/.originals/<Workflow>/` (pro Workflow ggf. ein weiterer Unterordner: `pdf-split` und `pdf-merge-duplex` legen einen pro Datei/Ziel an, `pdf-ocr` und `pdf-scan-inbox-triage` parken die Datei direkt); Backups sind in jedem Workflow standardmäßig an, und `.originals` wird nie durchsucht oder erneut verarbeitet.
+- sichern Originale vor jeder Änderung unter `<Ordner>/.originals/<Workflow>/` (pro Workflow ggf. ein weiterer Unterordner: `pdf-split` und `pdf-alternating-merge` legen einen pro Datei/Ziel an, `pdf-ocr` und `pdf-scanner-processor` parken die Datei direkt); Backups sind in jedem Workflow standardmäßig an, und `.originals` wird nie durchsucht oder erneut verarbeitet.
 
 ## Ergebnis- und Action-Glossar
 
-Jede Lauf-Ergebnis enthält oben `applied` (true = geschrieben, false = nur geplant/gelesen). Sammel-Workflows melden eine `actions`-Liste, Ein-Datei-Workflows ein einzelnes `action`-Feld. Einheitliches Action-Vokabular:
+Jedes Laufergebnis enthält oben `applied` (true = geschrieben, false = nur geplant/gelesen). Sammel-Workflows melden eine `actions`-Liste, Ein-Datei-Workflows ein einzelnes `action`-Feld. Die `actions`-Einträge des Orchestrators tragen zusätzlich ein `step`-Feld (`backup`, `ocr`, `front-back`, `merge`, `name`, `split`). Einheitliches Action-Vokabular:
 
 | Action | Bedeutung | Workflow |
 |---|---|---|
 | `planned` | Dry-Run: dies würde passieren | alle |
-| `planned_pair` | Dry-Run: Duplex-Paar würde so benannt | triage |
-| `renamed` | Datei umbenannt | triage |
-| `renamed_pair` | Duplex-Paar umbenannt | triage |
-| `left_unchanged` | unsicher (confidence < 0.7 oder kein Titel), nichts geändert | triage |
-| `merged` | Duplex-Paar gemischt | merge |
+| `renamed` | Datei umbenannt | Orchestrator (Step `name`) |
+| `left_unchanged` | unsicher (confidence < 0.7 oder kein Titel), nichts geändert | Orchestrator (Step `name`) |
+| `pair` / `no_pair` | Vorder-/Rückseiten-Entscheidung des LLM-Checks | Orchestrator (Step `front-back`) |
+| `merged` | Duplex-Paar gemischt | Merge-Step (auch Orchestrator-Step `merge`) |
+| `deferred` | Dry-Run: gemischte Datei ist nur geplant, Split käme nach einem echten Merge | Orchestrator (Step `split`) |
 | `replaced` | PDF wurde (per OCR) ersetzt | ocr |
 | `skipped` | Datei übersprungen (Textebene vorhanden, `force` nicht gesetzt; Backup-Datei) | ocr |
 | `split` | PDF wurde aufgeteilt | split |
@@ -32,26 +32,27 @@ Jede Lauf-Ergebnis enthält oben `applied` (true = geschrieben, false = nur gepl
 | `clarification` | unsicher, Rückfrage mit `question` und `proposal`, nichts geschrieben | split |
 | `error` | Fehler mit `error`-Meldung | alle |
 
-## pdf-scan-inbox-triage
+## pdf-scanner-processor
 
-OCR und Benennung neuer Scans im Nextcloud-Scanner-Eingang (nur erste Ordnerebene).
+Orchestrator über einen Scanner-Eingangsordner (nur erste Ordnerebene): OCR, Vorder-/Rückseiten-Erkennung + alternierendes Mischen, LLM-Benennung und bei sicherer Erkennung ein Split pro Datei — komplett durchgereicht, aufgebaut aus den Step-Workflows `pdf-ocr`, `pdf-alternating-merge` und `pdf-split` (als Child-Workflows mit deterministischen Ausführungs-IDs `{run}-{step}-{item}` aufgerufen).
 
 **Input**
 
 ```json
-{"folder_path": "/<Scanner-Eingang>", "apply_changes": true, "model": "mistral-small-latest", "connector": ""}
+{"folder_path": "/<Scanner-Eingang>", "apply_changes": true, "model": "mistral-small-latest", "connector": "", "merge_front_back": true, "split_parts": true}
 ```
 
 - `folder_path`: Scanner-Eingang; fehlt er, gilt das Workspace-Secret `SCAN_INBOX_FOLDER` (Umgebungsvariable im Deployment).
-- `model`: LLM für die Benennung.
+- `model`: LLM für die Prüfungen und die Benennung.
+- `merge_front_back: false` überspringt Paar-Erkennung/Mischen, `split_parts: false` überspringt den Split-Step.
 
-**Ablauf**: `Scan.pdf` / `ScanNNNN.pdf` finden → parallel analysieren (OCR, falls keine Textebene; bevor das Ergebnis die Datei in Nextcloud ersetzt, wird der aktuelle Scan als Kopie unter `.originals/pdf-scan-inbox-triage/` geparkt) → Duplex-Paare erkennen (gleiche Seitenzahl, Größe Faktor 0.5-2.0, Textüberlappung >= 0.4) → benennen (`name-document` mit den AGENTS.md-Regeln des Eingangsordners) → nur Umbenennen (jede umbenannte Datei wird vorher unter `.originals/pdf-scan-inbox-triage/` geparkt, falls nicht schon geschehen). Paare werden nicht gemischt, sondern mit einem Suffix in der Dokumentsprache versehen (`Vorderseite`/`Rueckseite` bei deutschen Dokumenten, sonst `Front`/`Back`); das Mischen übernimmt pdf-merge-duplex.
+**Ablauf**: `Scan.pdf` / `ScanNNNN.pdf` finden → Kopie jedes Roh-Scans unter `.originals/pdf-scanner-processor/` parken → Child `pdf-ocr` auf den Ordner (eigene Backups unter `.originals/pdf-ocr/`) → Scans analysieren (Seitenzahl, Textebene, Textausschnitt) → Kandidaten für Vorder-/Rückseiten-Paare (aufeinanderfolgende Scan-Reihenfolge, gleiche Seitenzahl, Größenfaktor 0.5-2.0, beide mit Textebene) per LLM-Activity `front-back-check` bestätigen (Annahme ab confidence >= 0.7; die Prüfung ist namensunabhängig, Vorder- und Rückseite dürfen also völlig anders aussehen) → Child `pdf-alternating-merge` pro bestätigtem Paar mit dem Zwischen-Titel `ScanMerged<N>.pdf` (N = größere Scan-Nummer des Paares; Quellen archiviert unter `.originals/pdf-alternating-merge/<Ziel>/`) → jede Ergebnisdatei benennen (`name-document` mit den nächstliegenden AGENTS.md-Regeln — Eingangsordner oder ein Elternordner; gemischte Paare über den kombinierten Text) → nur bei sicherer Erkennung (>= 0.7) umbenennen, sonst `left_unchanged` → Child `pdf-split` pro Ergebnisdatei (teilt nur bei sicherer Erkennung).
 
-**Ergebnis**: `{folder, applied, actions[]}` mit `action` pro Einheit aus `planned` / `planned_pair` / `renamed` / `renamed_pair` / `left_unchanged`; `renamed` / `renamed_pair` tragen zusätzlich `backups` mit den `.originals/pdf-scan-inbox-triage/...`-Pfaden.
+**Ergebnis**: `{folder, applied, actions[]}`; jeder Eintrag trägt `step` (`backup` / `ocr` / `front-back` / `merge` / `name` / `split`) plus die step-spezifischen Felder (`files`, `action`, `to`, `backup`, `confidence`, `result`, ...).
 
-## pdf-merge-duplex
+## pdf-alternating-merge
 
-Manuelles Duplex-Mischen, entweder direkt per `pairs` im Start-Input oder per JSON-Steuerdatei (Format: siehe ARCHITECTURE.md). Pro Eintrag: Seitenzahl prüfen, Vorder-/Rückseiten alternierend mischen (Rückseiten in umgekehrter Reihenfolge), benennen und neben den Quellen hochladen; die Quelldateien werden unter `.originals/pdf-merge-duplex/<Zielname>/` gesichert (als `FrontPages.pdf` / `BackPages_reversed.pdf`). Bei Steuerdatei schreibt der Workflow den Status je Eintrag zurück (`done`/`error`), wiederholte Läufe bearbeiten nur Einträge ohne Status.
+Alternierendes Mischen von Duplex-Paaren, entweder direkt per `pairs` im Start-Input oder per JSON-Steuerdatei (Format: siehe ARCHITECTURE.md). Pro Eintrag: Seitenzahl prüfen, Vorder-/Rückseiten alternierend mischen (Rückseiten in umgekehrter Reihenfolge), benennen und neben den Quellen hochladen; die Quelldateien werden unter `.originals/pdf-alternating-merge/<Zielname>/` gesichert (als `FrontPages.pdf` / `BackPages_reversed.pdf`). Bei Steuerdatei schreibt der Workflow den Status je Eintrag zurück (`done`/`error`), wiederholte Läufe bearbeiten nur Einträge ohne Status. Der Orchestrator ruft diesen Step pro erkanntem Paar mit explizitem Zwischen-`title` auf (`ScanMerged<N>.pdf`).
 
 **Input (Variante A, direkt)**
 
@@ -65,7 +66,7 @@ Manuelles Duplex-Mischen, entweder direkt per `pairs` im Start-Input oder per JS
 {"control_file": "/Ordner/steuerdatei.json", "apply_changes": true, "model": "mistral-small-latest"}
 ```
 
-Expliziter `title` gewinnt; sonst benennt die KI (`name-document` mit den AGENTS.md-Regeln des Ordners der Vorderseite). Unsichere Benennung markiert den Eintrag mit Fehler.
+Expliziter `title` gewinnt; sonst benennt die KI (`name-document` mit den nächstliegenden AGENTS.md-Regeln — Ordner der Vorderseite oder ein Elternordner). Unsichere Benennung markiert den Eintrag mit Fehler.
 
 **Ergebnis**: `{source, control_file, applied, processed, actions[]}` mit `action` pro Eintrag aus `planned` / `merged` / `error`.
 
@@ -96,6 +97,6 @@ Teilt eine PDF in Teile und benennt sie; Teile bleiben im Ordner der Originaldat
 - `titles`: explizite Teilnamen (Anzahl muss passen); schalten die AI-Benennung ab.
 - `name_parts` (Standard `true`): AI-Benennung; `false` => `<Stamm> Teil-N.pdf`.
 
-AI-benannte Teile heißen `<Titel>.pdf` (kein Stamm-Präfix), benannt nach den AGENTS.md-Regeln des Ordners.
+AI-benannte Teile heißen `<Titel>.pdf` (kein Stamm-Präfix), benannt nach den nächstliegenden AGENTS.md-Regeln.
 
 **Ergebnis**: `{target, applied, action, pages, parts[], original?}`; `action` aus `planned` / `split` / `no_split` / `clarification` / `error`, `parts` mit `pages` (z. B. `"1-2"`), `count`, `to`.

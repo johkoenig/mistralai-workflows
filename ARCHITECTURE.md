@@ -11,12 +11,15 @@ This file records conventions and the division of work.
 
 ## Division of work
 
+Two levels: three single-purpose step workflows in `workflows/steps/` and one
+orchestrator in `workflows/` that calls them as child workflows.
+
 | Workflow | Task | Trigger |
 |---|---|---|
-| pdf-scan-inbox-triage | OCR and naming of new scans in the inbox | manual |
-| pdf-merge-duplex | interleave duplex pairs alternately (control file) | manual |
-| pdf-ocr | process PDFs without a text layer in general (one file, one folder, optionally recursive) | manual |
-| pdf-split | split a PDF into parts (manual split points or LLM planning with a follow-up question), original moved to .originals/pdf-split/ | manual |
+| pdf-scanner-processor | orchestrator: OCR, front/back detection + merge, naming, split over the scanner inbox | manual |
+| pdf-ocr | process PDFs without a text layer (one file, one folder, optionally recursive) | manual or child of pdf-scanner-processor |
+| pdf-alternating-merge | interleave duplex pairs alternately (pairs input or control file) | manual or child of pdf-scanner-processor |
+| pdf-split | split a PDF into parts (explicit split points or LLM planning with a follow-up question), original moved to .originals/pdf-split/ | manual or child of pdf-scanner-processor |
 
 ## Trigger philosophy
 
@@ -24,21 +27,27 @@ All workflows are started manually only (Studio or chat, or MCP
 execute_workflow). There is deliberately no schedule and no webhook: an
 automatic start in the middle of a scan job would tear apart incomplete
 duplex sets and cause repeated runs on the same files. Heavy processing
-only ever starts after a completed scan.
+only ever starts after a completed scan. The only "automatic" triggering is
+inside one orchestrator run: pdf-scanner-processor starts the steps as child
+workflows with deterministic execution IDs.
 
 ## Storage and naming conventions
 
-- Targets: YYYY-MM-DD short, descriptive title.pdf (ASCII, umlauts
-  transliterated, max. 80 characters of title; without a reliable date
-  just the title).
-- Duplex halves from the triage run additionally carry a front/back suffix in the
-  document's language ("Vorderseite"/"Rueckseite" for German documents, "Front"/"Back"
-  otherwise), on the same title.
-- Source files of scanned duplex pairs are backed up by the merge workflow under
-  .originals/pdf-merge-duplex/<target name>/ where they are called FrontPages.pdf
-  and BackPages_reversed.pdf.
-- Uncertain naming (confidence < 0.7 in triage) is left untouched; the
-  merge workflow then requires an explicit title.
+- Naming conventions are NOT part of the project: the nearest AGENTS.md
+  (the folder itself or a parent folder) defines them and takes precedence
+  over the base prompt; without an AGENTS.md the LLM picks a suitable name
+  itself. The project only sanitizes file names technically (ASCII, umlauts
+  transliterated, max. 80 characters) and never overwrites (counter
+  suffixes).
+- A merged front/back pair first gets the intermediate name
+  ScanMerged<N>.pdf (N = larger scan number of the pair); the orchestrator
+  renames it to the final title in the naming step. ScanMerged*.pdf does not
+  match the scan name pattern, so later runs do not pick it up as a new scan.
+- Source files of scanned duplex pairs are backed up by the merge step under
+  .originals/pdf-alternating-merge/<target name>/ where they are called
+  FrontPages.pdf and BackPages_reversed.pdf.
+- Uncertain naming (confidence < 0.7 in the orchestrator) is left untouched;
+  the merge step then requires an explicit title.
 - Scanned is the scanner inbox (start parameter folder_path; default from
   the environment variable SCAN_INBOX_FOLDER, bound as a workspace secret
   in the deployment), never subfolders.
@@ -49,7 +58,7 @@ only ever starts after a completed scan.
 - pdf-ocr processes PDFs only (any case), no images, and at most 200
   files per run (the rest is reported).
 
-## Controlling pdf-merge-duplex
+## Controlling pdf-alternating-merge
 
 There are two equivalent ways:
 
@@ -93,11 +102,12 @@ pdf-split has two AI steps, both individually switchable:
   mode as a separate call against fixed split points); false => fallback
   <stem> Teil-N. Explicit titles disable AI naming.
 - Folder-specific naming rules apply to every AI naming: the shared
-  load-naming-rules activity in worker/pdf_ops.py reads
-  <folder>/AGENTS.md (max. 4000 characters; if missing: empty) and
-  appends it to the prompt (it has priority in title selection). pdf-split
-  uses the folder of the target PDF, pdf-scan-inbox-triage loads the
-  rules once per run from the inbox folder, pdf-merge-duplex without an
+  load-naming-rules activity in worker/pdf_ops.py reads the nearest
+  AGENTS.md (<folder> or a parent folder; max. 4000 characters; if none:
+  empty) and appends it to the prompt (it has priority over the base
+  prompt). pdf-split
+  uses the folder of the target PDF, pdf-scanner-processor loads the
+  rules once per run from the inbox folder, pdf-alternating-merge without an
   explicit title from the folder of the front page (name_document accepts
   naming_rules).
 - AI-named parts are called <title>.pdf without the prefix of the
@@ -114,22 +124,30 @@ pdf-split has two AI steps, both individually switchable:
 
 ## Code conventions
 
-- One workflow = one module in apps/worker/src/worker/workflows/ plus
-  tests in apps/worker/tests/ (file names mirror the workflow name). The
-  worker registers the package's modules automatically
-  (discover_all_workflows_in_package).
-- Shared logic (naming rules, duplex interleaving, text similarity,
-  Nextcloud transfer, the name-document and load-naming-rules activities)
-  lives in worker/pdf_ops.py and is imported, never duplicated. The
-  constants MAX_CONCURRENT_OCR and NAMING_RULES_MAX_CHARS also live only
-  there.
+- One workflow = one module in apps/worker/src/worker/workflows/ (orchestrator)
+  or apps/worker/src/worker/workflows/steps/ (step workflows), plus tests in
+  apps/worker/tests/ (file names mirror the workflow name). The worker
+  discovers the package recursively (discover_all_workflows_in_package), so
+  the steps subpackage needs no entrypoint change.
+- Shared logic (naming rules, duplex interleaving, front/back detection,
+  scan-name handling, Nextcloud transfer, the name-document, front-back-check
+  and load-naming-rules activities) lives in worker/pdf_ops.py and is
+  imported, never duplicated. The constants MAX_CONCURRENT_OCR and
+  NAMING_RULES_MAX_CHARS also live only there.
 - The OCR pipeline (OCRmyPDF call, page rotation, deskew, text-layer
   check) lives in worker/ocr.py and is imported, never duplicated.
   Rotate and deskew are options of a single ocrmypdf call; separate passes
   would be a quality loss without benefit.
 - Repository is `mistralai-workflows`, deployment is `mistralai-workflows`; workflow names
-  follow the schema <domain>-<action> (pdf-scan-inbox-triage,
-  pdf-merge-duplex, pdf-ocr, pdf-split).
+  follow the schema <domain>-<action> (pdf-scanner-processor,
+  pdf-alternating-merge, pdf-ocr, pdf-split).
+- Orchestrator mechanics: the step classes live in the STEPS registry of
+  pdf_scanner_processor.py; child workflows are started by name via
+  workflows.workflow.execute_workflow with deterministic execution IDs
+  ({run}-{step}-{item}, run = uuid4 of the run, stable on replay), per-file
+  children in parallel via wait=False + asyncio.Semaphore. Because children
+  dispatch by workflow name, tests register fake step classes under the step
+  names in the test worker.
 - Managed deployments: no self-scaling; parallelism within a worker via
   asyncio.gather (MAX_CONCURRENT_OCR).
 
@@ -141,4 +159,4 @@ pdf-split has two AI steps, both individually switchable:
 
 ## Original-file custody (.originals)
 
-Secured originals are stored uniformly under `<folder>/.originals/<workflow>/`, on by default in every workflow. pdf-split parks the original under `.originals/pdf-split/<stem>/` (one folder per file, repeated runs create counter suffixes instead of overwriting); pdf-merge-duplex backs the pair sources up under `.originals/pdf-merge-duplex/<target name>/`; pdf-ocr moves the original to `.originals/pdf-ocr/<name>`; pdf-scan-inbox-triage parks a copy of each scan under `.originals/pdf-scan-inbox-triage/` before modifying it. Benefit: one place to inspect and clean up ("what may go away at some point?").
+Secured originals are stored uniformly under `<folder>/.originals/<workflow>/`, on by default in every workflow. pdf-split parks the original under `.originals/pdf-split/<stem>/` (one folder per file, repeated runs create counter suffixes instead of overwriting); pdf-alternating-merge backs the pair sources up under `.originals/pdf-alternating-merge/<target name>/`; pdf-ocr moves the original to `.originals/pdf-ocr/<name>`; pdf-scanner-processor parks a copy of each raw scan under `.originals/pdf-scanner-processor/` before anything modifies it. Benefit: one place to inspect and clean up ("what may go away at some point?").

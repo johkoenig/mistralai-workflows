@@ -1,6 +1,6 @@
 [project]
 name = "cli"
-version = "0.1.0"
+version = "0.2.0"
 requires-python = ">=3.12,<3.16"
 # The app's command-line entry point. Deps are only what a capability-independent core guarantees:
 # Typer for the CLI, the shared `env`/`utils` seams, and the `mistralai` client and `structlog` that
