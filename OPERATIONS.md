@@ -19,7 +19,7 @@ One repository, one managed deployment. The concrete parameters of the `mistrala
 
 The worker image system-installs `ghostscript`, `tesseract-ocr-all`, and `jbig2dec` (package list: `deploy/docker/worker-packages/workflows.txt`).
 
-Discovery after every start: the worker automatically registers all workflow modules from `apps/worker/src/worker/workflows/` (`discover_all_workflows_in_package`). In normal operation, four workflows and all activities from [WORKFLOWS.md](WORKFLOWS.md) must appear in the logs, without OOM or import errors.
+Discovery after every start: the worker automatically registers all workflow modules from `apps/worker/src/worker/workflows/` (recursively, including `workflows/steps/`) via `discover_all_workflows_in_package`. In normal operation, the four workflows `pdf-scanner-processor`, `pdf-ocr`, `pdf-alternating-merge`, `pdf-split` and all activities from [WORKFLOWS.md](WORKFLOWS.md) must appear in the logs, without OOM or import errors.
 
 ## Quality gates (CI)
 
@@ -43,15 +43,15 @@ Discovery after every start: the worker automatically registers all workflow mod
 
 - **Dry run first**: always check new or changed workflows with `apply_changes: false` against a real document first.
 - **Manual starts only**: no schedule, no webhook; rationale in ARCHITECTURE.md. Heavy processing only after a completed scan job.
-- **Originals are kept**: every workflow secures originals by default under `<folder>/.originals/<workflow>/` (split: `<stem>/` subfolder, duplex merge: `<target name>/` subfolder, OCR and triage: the file itself). Clean up by hand once the results are verified; the workflows never delete.
+- **Originals are kept**: every workflow secures originals by default under `<folder>/.originals/<workflow>/` (split: `<stem>/` subfolder, alternating merge: `<target name>/` subfolder, OCR and pdf-scanner-processor: the file itself). Clean up by hand once the results are verified; the workflows never delete.
 
 ## Naming rules (AGENTS.md)
 
-Folder-specific naming rules live as `AGENTS.md` in the respective folder (e.g. the scanner inbox; a default date schema, a health-insurance-receipt exception with a `#xxxx ...` marker, and a person-name qualifier). Every AI-naming workflow (`pdf-scan-inbox-triage`, `pdf-merge-duplex` without an explicit `title`, `pdf-split`) loads them via the `load-naming-rules` activity (max. 4000 characters) and passes them to the model with priority over the base prompt. Changes to AGENTS.md take effect from the next run, without a redeploy.
+Folder-specific naming rules live as `AGENTS.md` in the respective folder (e.g. the scanner inbox; a default date schema, a health-insurance-receipt exception with a `#xxxx ...` marker, and a person-name qualifier). Every AI-naming workflow (`pdf-scanner-processor`, `pdf-alternating-merge` without an explicit `title`, `pdf-split`) loads them via the `load-naming-rules` activity (max. 4000 characters) and passes them to the model with priority over the base prompt. Changes to AGENTS.md take effect from the next run, without a redeploy.
 
 ## Known limitations
 
-- **No moves between team stores**: the Nextcloud connector supports `files_move` only within one file area. Files that need to be sorted from the scanner inbox into another area are copied via `files_copy`; the originals in the scanner inbox have to be deleted by hand afterwards. A later step (a triage extension) can move the sorting into the worker directly.
+- **No moves between team stores**: the Nextcloud connector supports `files_move` only within one file area. Files that need to be sorted from the scanner inbox into another area are copied via `files_copy`; the originals in the scanner inbox have to be deleted by hand afterwards. A later step (an extension of pdf-scanner-processor) can move the sorting into the worker directly.
 - **No deletion via the connector**: `files_delete` does not exist. Whatever must be removed for good (duplicate parts, consumed originals) is cleaned up by the user by hand.
 - **OCR limits**: `ocrmypdf -j 1` per file and `MAX_CONCURRENT_OCR = 2` in parallel (memory protection of the managed instance); at most 200 files per pdf-ocr run. Large batches are better processed locally.
 - **OCR on health-insurance receipts** is unreliable (handwritten numbers); the AGENTS.md catches this with the `#xxxx` convention.

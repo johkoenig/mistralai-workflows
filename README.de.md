@@ -1,28 +1,28 @@
 > Sprache: Deutsch · [English version](README.md)
 
-# mistralai-workflows: PDF-Scan-Triage, Duplex-Mischung, Split und OCR als Mistral-Workflows
+# mistralai-workflows: PDF-Scan-Verarbeitung als Mistral-Workflows — Step-Workflows (OCR, alternierendes Mischen, Split) + Orchestrator
 
 [![CI](https://img.shields.io/github/actions/workflow/status/johkoenig/mistralai-workflows/ci.yml?branch=main&label=CI)](https://github.com/johkoenig/mistralai-workflows/actions/workflows/ci.yml)
 
-Ein Repository, ein Managed Deployment in deinem Mistral-Workspace, vier Workflows, die auf deinen Dokumenten **in deinem eigenen Speicher** laufen. Nichts verlässt den verbundenen Speicher, außer den OCR-/Benennungs-Prompts an die Mistral-API.
+Ein Repository, ein Managed Deployment in deinem Mistral-Workspace, vier Workflows, die auf deinen Dokumenten **in deinem eigenen Speicher** laufen — drei spezialisierte Steps plus ein Orchestrator, der den kompletten Scan-Inbox-Prozess von vorne bis hinten fährt. Nichts verlässt den verbundenen Speicher, außer den OCR-/Benennungs-Prompts an die Mistral-API.
 
 | Workflow | Was er tut |
 |---|---|
-| `pdf-scan-inbox-triage` | OCR und LLM-Benennung neuer Scans (`Scan.pdf` / `ScanNNNN.pdf`) im Scanner-Eingangsordner; Duplex-Paare bekommen ein Vorder-/Rückseiten-Suffix in der Dokumentsprache — werden aber nicht gemischt |
-| `pdf-merge-duplex` | Mischt Duplex-Paare (Vorder-/Rückseiten alternierend) per JSON-Steuerdatei oder direktem `pairs`-Start-Input |
-| `pdf-split` | Teilt eine PDF an angegebenen Seitenzahlen oder per LLM geplanten Trennstellen (Rückfrage bei Unsicherheit) |
+| `pdf-scanner-processor` | Orchestrator über einen Scanner-Eingangsordner: OCR neuer Scans, Vorder-/Rückseiten-Erkennung + alternierendes Mischen (`ScanMerged<N>.pdf`), LLM-Benennung zu `YYYY-MM-DD Titel.pdf`, bei sicherer Erkennung Split — aufgebaut aus den drei Steps darunter |
 | `pdf-ocr` | OCR für eine einzelne PDF oder einen ganzen Ordner (optional rekursiv) |
+| `pdf-alternating-merge` | Mischt Duplex-Paare (Vorder-/Rückseiten alternierend) per JSON-Steuerdatei oder direktem `pairs`-Start-Input |
+| `pdf-split` | Teilt eine PDF an angegebenen Seitenzahlen oder per LLM geplanten Trennstellen (Rückfrage bei Unsicherheit) |
 
-Alle vier werden **ausschließlich manuell** gestartet (Studio, Chat oder MCP `execute_workflow`) — nie per Schedule oder Webhook, damit ein Lauf nie einen unvollständigen Scan-Job auseinanderreißt.
+Alle vier werden **ausschließlich manuell** gestartet (Studio, Chat oder MCP `execute_workflow`) — nie per Schedule oder Webhook, damit ein Lauf nie einen unvollständigen Scan-Job auseinanderreißt. Innerhalb eines Orchestrator-Laufs ruft `pdf-scanner-processor` die drei Steps als Child-Workflows auf.
 
 ## Schnellstart
 
 1. **Deployment**: Lege ein Managed-Workflow-Deployment namens `mistralai-workflows` aus diesem Repository an — Dockerfile `deploy/docker/Dockerfile.worker`, Build-Kontext `.`, `hardened=true` (die Workflows laufen `on_behalf_of` dir). Die Deployment-Parameter stehen in [OPERATIONS.de.md](OPERATIONS.de.md).
-2. **Secrets**: Workspace-Secret `scan_inbox_folder` (als Umgebungsvariable `SCAN_INBOX_FOLDER` gebunden) = Standard-Scanner-Eingang für den Triage-Workflow; Workspace-Secret `file_connector_names` (als `FILE_CONNECTOR_NAMES` gebunden, kommagetrennt, Default `nextcloud`) = deine Datei-Connector(s).
+2. **Secrets**: Workspace-Secret `scan_inbox_folder` (als Umgebungsvariable `SCAN_INBOX_FOLDER` gebunden) = Standard-Scanner-Eingang für den Workflow `pdf-scanner-processor`; Workspace-Secret `file_connector_names` (als `FILE_CONNECTOR_NAMES` gebunden, kommagetrennt, Default `nextcloud`) = deine Datei-Connector(s).
 3. **Workflow aufrufen** in Studio/Chat oder per MCP `execute_workflow`. Beispiel-Start-Inputs:
 
 ```json
-{"folder_path": "/<Scanner-Eingang>", "apply_changes": false}
+{"folder_path": "/<Scanner-Eingang>", "apply_changes": false, "merge_front_back": true, "split_parts": true}
 ```
 
 ```json
@@ -45,7 +45,7 @@ Alle vier werden **ausschließlich manuell** gestartet (Studio, Chat oder MCP `e
 
 - Dateien heißen `YYYY-MM-DD kurze, beschreibende Bezeichnung.pdf` (ASCII, Umlaute transliteriert); Dateien werden nie überschrieben (Kollisionen bekommen `_2`, `_3`, ...).
 - Ordnerspezifische Benennungsregeln (Datumsschema, Ausnahmen, Qualifizierer) liegen in einer `AGENTS.md`-Datei im jeweiligen Ordner und gehen mit Priorität vor dem Basis-Prompt an das LLM (max. 4000 Zeichen).
-- Das LLM benennt, verschiebt und fragt in der Sprache des Dokuments (deutsches Dokument → `Vorderseite`/`Rueckseite`, deutsche Titel, sonst `Front`/`Back`).
+- Das LLM benennt, verschiebt und fragt in der Sprache des Dokuments. Gemischte Vorder-/Rückseiten-Paare bekommen zuerst den Zwischennamen `ScanMerged<N>.pdf` (N = größere Scan-Nummer des Paares) und werden danach in den endgültigen Titel umbenannt.
 - **Originale werden immer gesichert** unter `<Ordner>/.originals/<Workflow>/` — in allen vier Workflows standardmäßig an (Split und Merge legen pro Datei/Ziel einen Unterordner an). Die Workflows löschen nie etwas; `.originals/` räumst du nach der Prüfung von Hand auf.
 - OCR-, Download- und Upload-Aktivitäten senden Heartbeats: ein abgestürzter Worker wird binnen ~2 Minuten erkannt und die Aktivität automatisch wiederholt.
 

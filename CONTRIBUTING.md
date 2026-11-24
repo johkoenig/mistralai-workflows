@@ -6,20 +6,20 @@ User-facing documentation lives in [README.md](README.md) / [WORKFLOWS.md](WORKF
 
 ## Repository structure
 
-All workflows live as modules in the package `apps/worker/src/worker/workflows/`; the worker discovers and registers them automatically (`discover_all_workflows_in_package`). Shared logic lives in `apps/worker/src/worker/pdf_ops.py` (naming, duplex interleaving, file-connector transfer), the OCR pipeline in `apps/worker/src/worker/ocr.py`. A new workflow is a new module file plus a test file in `apps/worker/tests/`:
+All workflows live as modules in the package `apps/worker/src/worker/workflows/` (orchestrator) and its subpackage `workflows/steps/` (single-purpose step workflows); the worker discovers and registers them automatically and recursively (`discover_all_workflows_in_package`). Shared logic lives in `apps/worker/src/worker/pdf_ops.py` (naming, duplex interleaving, front/back detection, file-connector transfer), the OCR pipeline in `apps/worker/src/worker/ocr.py`. A new workflow is a new module file plus a test file in `apps/worker/tests/`:
 
 ~~~
-apps/worker/src/worker/pdf_ops.py                          # shared logic (naming, interleaving, transfer)
-apps/worker/src/worker/ocr.py                              # reusable OCR pipeline (OCRmyPDF, rotate, deskew)
-apps/worker/src/worker/workflows/pdf_scan_inbox_triage.py   # workflow + activities
-apps/worker/src/worker/workflows/pdf_merge_duplex.py        # workflow + activities
-apps/worker/src/worker/workflows/pdf_ocr.py                 # workflow + activities
-apps/worker/src/worker/workflows/pdf_split.py              # workflow + activities
-apps/worker/tests/test_pdf_scan_inbox_triage.py             # tests
-apps/worker/tests/test_pdf_merge_duplex.py                  # tests
-apps/worker/tests/test_pdf_ocr.py                           # tests
-apps/worker/tests/test_pdf_split.py                        # tests
-deploy/docker/worker-packages/workflows.txt                 # apt packages of the worker image
+apps/worker/src/worker/pdf_ops.py                              # shared logic (naming, interleaving, front/back detection, transfer)
+apps/worker/src/worker/ocr.py                                  # reusable OCR pipeline (OCRmyPDF, rotate, deskew)
+apps/worker/src/worker/workflows/pdf_scanner_processor.py      # orchestrator + activities
+apps/worker/src/worker/workflows/steps/pdf_ocr.py              # step: workflow + activities
+apps/worker/src/worker/workflows/steps/pdf_alternating_merge.py # step: workflow + activities
+apps/worker/src/worker/workflows/steps/pdf_split.py            # step: workflow + activities
+apps/worker/tests/test_pdf_scanner_processor.py                # tests
+apps/worker/tests/test_pdf_alternating_merge.py                # tests
+apps/worker/tests/test_pdf_ocr.py                              # tests
+apps/worker/tests/test_pdf_split.py                            # tests
+deploy/docker/worker-packages/workflows.txt                     # apt packages of the worker image
 ~~~
 
 Root `pyproject.toml` is a uv workspace (`package = false`, members `apps/*`, `packages/py/*`).
