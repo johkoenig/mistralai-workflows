@@ -8,8 +8,8 @@ Alle Workflows:
 
 - werden manuell gestartet (Studio oder Chat bzw. MCP `execute_workflow`); die Steps werden zusätzlich von `pdf-scanner-processor` als Child-Workflows aufgerufen;
 - nutzen `apply_changes` (Standard `true`); `false` ist der Dry-Run: alles wird gelesen, geplant und geprüft, aber nichts geschrieben (auch keine Status-Rückmeldungen in Steuerdateien);
-- benennen Dateien nach dem Schema `YYYY-MM-DD kurze, beschreibende Bezeichnung.pdf` (ASCII, Umlaute transliteriert), personenbezogene Dokumente mit `(Vorname)` am Ende;
-- lesen ordnerspezifische Benennungsregeln aus `<Ordner>/AGENTS.md` (max. 4000 Zeichen; fehlt die Datei: nur der Basis-Prompt), wann immer die KI benennt;
+- benennen Dateien nach dem Schema `YYYY-MM-DD kurze, beschreibende Bezeichnung.pdf` (ASCII, Umlaute transliteriert) — dieses Schema ist Teil des Basis-Prompts im Projekt;
+- lesen ordnerspezifische Benennungsregeln aus `<Ordner>/AGENTS.md` (max. 4000 Zeichen; fehlt die Datei: nur der Basis-Prompt), wann immer die KI benennt — z. B. personenbezogene Dokumente mit `(Vorname)` am Ende oder ein `#xxxx`-Marker; solche Details sind nicht Teil des Projekts, sie kommen aus der AGENTS.md des Ordners;
 - überschreiben niemals Dateien (Kollisionen erhalten `_2`, `_3`, ...);
 - sichern Originale vor jeder Änderung unter `<Ordner>/.originals/<Workflow>/` (pro Workflow ggf. ein weiterer Unterordner: `pdf-split` und `pdf-alternating-merge` legen einen pro Datei/Ziel an, `pdf-ocr` und `pdf-scanner-processor` parken die Datei direkt); Backups sind in jedem Workflow standardmäßig an, und `.originals` wird nie durchsucht oder erneut verarbeitet.
 

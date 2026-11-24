@@ -8,8 +8,8 @@ All workflows:
 
 - are started manually (Studio or chat, or MCP `execute_workflow`); the steps are additionally called by `pdf-scanner-processor` as child workflows;
 - use `apply_changes` (default `true`); `false` is the dry run: everything is read, planned and checked, but nothing is written (not even status feedback into control files);
-- name files by the schema `YYYY-MM-DD short, descriptive title.pdf` (ASCII, umlauts transliterated), personal documents with `(first name)` at the end;
-- read folder-specific naming rules from `<folder>/AGENTS.md` (max. 4000 characters; if the file is missing: only the base prompt), whenever the AI names something;
+- name files by the schema `YYYY-MM-DD short, descriptive title.pdf` (ASCII, umlauts transliterated) — this schema is part of the project's base prompt;
+- read folder-specific naming rules from `<folder>/AGENTS.md` (max. 4000 characters; if the file is missing: only the base prompt), whenever the AI names something — e.g. personal documents with `(first name)` at the end or a `#xxxx` marker; those details are not part of the project, they come from the folder's AGENTS.md;
 - never overwrite files (collisions get `_2`, `_3`, ...);
 - secure originals under `<folder>/.originals/<workflow>/` before anything is modified (per-workflow subfolder where useful: `pdf-split` and `pdf-alternating-merge` create one per file/target, `pdf-ocr` and `pdf-scanner-processor` park the file directly); backups are on by default in every workflow, and `.originals` is never scanned or reprocessed.
 
