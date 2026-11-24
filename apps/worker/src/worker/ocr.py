@@ -17,7 +17,7 @@ waiting silently until start_to_close_timeout. Every OCR run is logged with
 duration and result.
 
 This module has no Nextcloud and no workflow dependency. Callers are
-pdf-scan-inbox-triage (scan analysis) and pdf-ocr (generic single-PDF/folder
+pdf-scanner-processor (scan analysis) and pdf-ocr (generic single-PDF/folder
 processor).
 """
 

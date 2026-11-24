@@ -1,4 +1,4 @@
-"""Manual splitting of a PDF into parts (pdf-split).
+"""Splitting of a PDF into parts (pdf-split).
 
 Start input:
 
@@ -38,9 +38,9 @@ is moved as a backup to "<folder>/.originals/pdf-split/<stem>/".
 (one subfolder per workflow, one further folder per file). The
 workflow never overwrites anything: existing names get counter suffixes.
 
-The workflow is started manually only (Studio or chat),
-never triggered automatically. Long activities send heartbeats and
-are retried on worker restart.
+The workflow is started directly (Studio or chat) or called by
+pdf-scanner-processor as a child workflow. Long activities send
+heartbeats and are retried on worker restart.
 """
 
 from __future__ import annotations
@@ -466,7 +466,7 @@ class PdfSplitWorkflow:
                 # parts get the Part-N fallback.
                 titles = None
         elif titles is None and input.name_parts:
-            # Manual mode without titles: LLM proposes part names;
+            # Explicit split points without titles: LLM proposes part names;
             # insecure proposals fall back to Part-N.
             naming = await plan_split(
                 loaded["pages"], page_count, split_at, input.model, rules

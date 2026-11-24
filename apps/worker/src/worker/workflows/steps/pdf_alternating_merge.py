@@ -1,4 +1,4 @@
-"""Manual duplex merging: directly via pairs input or via a JSON control file.
+"""Alternating merge of duplex pairs: directly via pairs input or via a JSON control file.
 
 Variant A (direct, no file): the pairs are given in the start input, e.g.:
 
@@ -33,8 +33,8 @@ reverse order, name the target file (explicit title or LLM from the combined
 OCR text) and upload it next to the sources, back the source files up under
 .originals/pdf-alternating-merge/<target name>/, then write the status back into the control file ("done" with
 result or "error" with message; variant B only). Repeated runs (variant B)
-process only entries without status. The workflow is started manually only
-(Studio or chat), never triggered automatically.
+process only entries without status. The workflow is started directly
+(Studio or chat) or called by pdf-scanner-processor as a child workflow.
 
 Long activities (reading, merging, uploading) send activity heartbeats
 and are retried automatically on worker restart.
@@ -425,7 +425,7 @@ class PdfAlternatingMergeWorkflow:
                         )
                 else:
                     raise ValueError(
-                        "no text layer; please run pdf-scan-inbox-triage first "
+                        "no text layer; please run pdf-ocr first "
                         "or provide 'title' (pairs entry or control file)"
                     )
 

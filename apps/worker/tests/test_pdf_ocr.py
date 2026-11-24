@@ -60,7 +60,7 @@ class _FakeNC:
 
 class TestBackupHelpers:
     async def test_park_original_copies_with_unique_name(self):
-        root = "/D/.originals/pdf-scan-inbox-triage"
+        root = "/D/.originals/pdf-scanner-processor"
         nc = _FakeNC({root: [{"name": "Scan0000.pdf"}]})
         dest = await pdf_ops.park_original(nc, "/D/Scan0000.pdf", root)
         assert dest == f"{root}/Scan0000_2.pdf"

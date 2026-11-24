@@ -62,3 +62,43 @@ async def test_plan_split_sends_greedy_sampling_params(
     assert result["titles"] == ["A", "B"]
     assert chat.calls[0]["temperature"] == 0.0
     assert chat.calls[0]["top_p"] == 1
+
+
+async def test_front_back_check_sends_greedy_sampling_params(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chat = _FakeChat(
+        json.dumps(
+            {
+                "is_front_back": True,
+                "confidence": 0.9,
+                "reason": "gleiche Rechnungsnummer",
+            }
+        )
+    )
+    _patch_client(monkeypatch, chat)
+
+    result = await pdf_ops.front_back_check(
+        "front text", "back text", "mistral-small-latest"
+    )
+
+    assert result == {
+        "is_front_back": True,
+        "confidence": 0.9,
+        "reason": "gleiche Rechnungsnummer",
+    }
+    assert chat.calls[0]["temperature"] == 0.0
+    assert chat.calls[0]["top_p"] == 1
+
+
+async def test_front_back_check_rejects_unparseable_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chat = _FakeChat("not json at all")
+    _patch_client(monkeypatch, chat)
+
+    result = await pdf_ops.front_back_check("a", "b", "mistral-small-latest")
+
+    assert result["is_front_back"] is False
+    assert result["confidence"] == 0.0
+    assert result["reason"] == ""
