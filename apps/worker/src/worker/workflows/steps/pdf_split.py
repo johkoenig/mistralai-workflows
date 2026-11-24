@@ -373,7 +373,7 @@ async def split_file(
         "anything is written. Naming rules may live as AGENTS.md in the folder. "
         "When unsure, the workflow asks back without writing. Parts stay in the "
         "original file's folder, the original is secured under "
-        ".originals/pdf-split/. Manual start only."
+        ".originals/pdf-split/."
     ),
     on_behalf_of=True,
     execution_timeout=timedelta(hours=1),

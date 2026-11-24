@@ -348,7 +348,7 @@ def originals_dir(folder: str, workflow: str) -> str:
     """Uniform storage location for secured originals.
 
     <folder>/.originals/<workflow>. Whether a further subfolder per file is
-    created below it depends on the workflow (pdf-split and pdf-merge-duplex
+    created below it depends on the workflow (pdf-split and pdf-alternating-merge
     use one, pdf-ocr and pdf-scan-inbox-triage park the file directly), so
     repeated runs never overwrite anything.
     """

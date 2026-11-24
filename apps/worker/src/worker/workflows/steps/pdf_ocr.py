@@ -21,7 +21,7 @@ Only PDFs (case insensitive), no images. At most MAX_FILES_PER_RUN files are
 processed per run; the rest is reported and skipped (please process large
 batches locally).
 apply_changes=false (dry run) executes OCR and checks fully,
-but writes nothing back. Manual start only.
+but writes nothing back.
 
 connector: name of the file connector from FILE_CONNECTOR_NAMES (empty = default);
 with several active Nextcloud connectors the caller selects the target connector.
@@ -313,7 +313,7 @@ async def process_file(
         "Generic PDF OCR processor: a single PDF or a folder "
         "(optionally with subfolders). PDFs without a text layer are processed "
         "with Tesseract (deskew, page rotation). keep_original (default true) "
-        "secures the original under .originals/pdf-ocr/. Manual start only."
+        "secures the original under .originals/pdf-ocr/."
     ),
     on_behalf_of=True,
     execution_timeout=timedelta(hours=3),

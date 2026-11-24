@@ -31,7 +31,7 @@ For each not-yet-processed entry (without "status"): load both PDFs,
 check the page count, interleave front pages in scan order with back pages in
 reverse order, name the target file (explicit title or LLM from the combined
 OCR text) and upload it next to the sources, back the source files up under
-.originals/pdf-merge-duplex/<target name>/, then write the status back into the control file ("done" with
+.originals/pdf-alternating-merge/<target name>/, then write the status back into the control file ("done" with
 result or "error" with message; variant B only). Repeated runs (variant B)
 process only entries without status. The workflow is started manually only
 (Studio or chat), never triggered automatically.
@@ -81,7 +81,7 @@ from worker.pdf_ops import (
     unique_filename,
 )
 
-logger = logging.getLogger("worker.pdf_merge_duplex")
+logger = logging.getLogger("worker.pdf_alternating_merge")
 
 
 def read_control_file(path: str) -> Any:
@@ -100,7 +100,7 @@ MIN_TITLE_CONFIDENCE = 0.5
 HEARTBEAT_TIMEOUT = timedelta(seconds=120)
 
 
-class PdfMergeDuplexInput(pydantic.BaseModel):
+class PdfAlternatingMergeInput(pydantic.BaseModel):
     """Start input: either pairs inline (A) or the path of a control file (B)."""
 
     # Exactly one of the two variants: pairs (inline) or control_file.
@@ -317,7 +317,7 @@ async def apply_pair(
             detail={"phase": "upload", "file": os.path.basename(target_path)},
         )
 
-        # Create the backup folder (including .originals/pdf-merge-duplex)
+        # Create the backup folder (including .originals/pdf-alternating-merge)
         # idempotently; an already existing folder is fine.
         await ensure_folder(nc, archive_dir)
         await nc_call(
@@ -350,22 +350,21 @@ async def apply_pair(
 
 
 @workflows.workflow.define(
-    name="pdf-merge-duplex",
-    workflow_display_name="Merge PDF duplex manually",
+    name="pdf-alternating-merge",
+    workflow_display_name="Alternating merge PDF duplex",
     workflow_description=(
         "Interleaves front/back pairs alternately into one PDF - directly via "
-        "pairs start input or via a JSON control file in Nextcloud. "
-        "Manual start only."
+        "pairs start input or via a JSON control file in Nextcloud."
     ),
     on_behalf_of=True,
     execution_timeout=timedelta(hours=1),
 )
 @uses_connectors(*file_connectors.values())
-class PdfMergeDuplexWorkflow:
+class PdfAlternatingMergeWorkflow:
     """Merge duplex pairs: pairs inline or via control file (module docstring)."""
 
     @workflows.workflow.entrypoint
-    async def run(self, input: PdfMergeDuplexInput) -> dict[str, Any]:
+    async def run(self, input: PdfAlternatingMergeInput) -> dict[str, Any]:
         """Processes all pairs without status and writes the control file back (variant B)."""
         if input.pairs is None and not input.control_file:
             return {
@@ -448,7 +447,7 @@ class PdfMergeDuplexWorkflow:
                     continue
 
                 archive_dir = (
-                    originals_dir(folder, "pdf-merge-duplex")
+                    originals_dir(folder, "pdf-alternating-merge")
                     + "/"
                     + target_name[: -len(".pdf")]
                 )

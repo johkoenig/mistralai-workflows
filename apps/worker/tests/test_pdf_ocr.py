@@ -8,8 +8,8 @@ from typing import Any
 from mistralai import workflows
 from mistralai.workflows.testing import create_test_worker
 from worker import ocr, pdf_ops
-from worker.workflows import pdf_ocr
-from worker.workflows.pdf_ocr import PdfOcrInput, PdfOcrWorkflow
+from worker.workflows.steps import pdf_ocr
+from worker.workflows.steps.pdf_ocr import PdfOcrInput, PdfOcrWorkflow
 
 
 def _entry(name: str, size: int = 1000, is_dir: bool = False) -> dict:

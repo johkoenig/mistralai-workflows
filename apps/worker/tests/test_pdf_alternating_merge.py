@@ -1,4 +1,4 @@
-"""Tests for the pdf-merge-duplex workflow: control-file logic and a full run with faked activities."""
+"""Tests for the pdf-alternating-merge workflow: control-file logic and a full run with faked activities."""
 
 import json
 from datetime import timedelta
@@ -7,9 +7,9 @@ from typing import Any
 
 from mistralai import workflows
 from mistralai.workflows.testing import create_test_worker
-from worker.workflows.pdf_merge_duplex import (
-    PdfMergeDuplexInput,
-    PdfMergeDuplexWorkflow,
+from worker.workflows.steps.pdf_alternating_merge import (
+    PdfAlternatingMergeInput,
+    PdfAlternatingMergeWorkflow,
     entry_error,
     pending_indices,
 )
@@ -123,11 +123,11 @@ async def test_workflow_merges_pair_and_writes_status(
     }
     fakes = _make_fakes(record_path, naming, ["AGENTS.md"], loaded)
     async with create_test_worker(
-        temporal_env, [PdfMergeDuplexWorkflow], activities=fakes
+        temporal_env, [PdfAlternatingMergeWorkflow], activities=fakes
     ):
         raw = await temporal_env.client.execute_workflow(
-            PdfMergeDuplexWorkflow.run,
-            PdfMergeDuplexInput(
+            PdfAlternatingMergeWorkflow.run,
+            PdfAlternatingMergeInput(
                 control_file="SCANNER_INBOX/steuerdatei.json", apply_changes=True
             ),
             id="test-merge-apply",
@@ -144,7 +144,7 @@ async def test_workflow_merges_pair_and_writes_status(
     )
     assert loaded["pairs"][0]["status"] == "done"
     assert loaded["pairs"][0]["result"]["archive"].startswith(
-        "SCANNER_INBOX/.originals/pdf-merge-duplex/"
+        "SCANNER_INBOX/.originals/pdf-alternating-merge/"
     )
     calls = [
         json.loads(line)
@@ -177,11 +177,11 @@ async def test_workflow_skips_processed_and_marks_errors(
     naming = {"date": "2026-11-29", "title": "Rechnung B", "confidence": 0.9}
     fakes = _make_fakes(record_path, naming, [], loaded)
     async with create_test_worker(
-        temporal_env, [PdfMergeDuplexWorkflow], activities=fakes
+        temporal_env, [PdfAlternatingMergeWorkflow], activities=fakes
     ):
         raw = await temporal_env.client.execute_workflow(
-            PdfMergeDuplexWorkflow.run,
-            PdfMergeDuplexInput(
+            PdfAlternatingMergeWorkflow.run,
+            PdfAlternatingMergeInput(
                 control_file="SCANNER_INBOX/steuerdatei.json", apply_changes=True
             ),
             id="test-merge-mixed",
@@ -212,11 +212,11 @@ async def test_workflow_dry_run_does_not_write(temporal_env, tmp_path, monkeypat
     naming = {"date": "2026-11-28", "title": "Rechnung A", "confidence": 0.9}
     fakes = _make_fakes(record_path, naming, [], loaded)
     async with create_test_worker(
-        temporal_env, [PdfMergeDuplexWorkflow], activities=fakes
+        temporal_env, [PdfAlternatingMergeWorkflow], activities=fakes
     ):
         raw = await temporal_env.client.execute_workflow(
-            PdfMergeDuplexWorkflow.run,
-            PdfMergeDuplexInput(
+            PdfAlternatingMergeWorkflow.run,
+            PdfAlternatingMergeInput(
                 control_file="SCANNER_INBOX/steuerdatei.json", apply_changes=False
             ),
             id="test-merge-dry",
@@ -238,4 +238,4 @@ async def test_workflow_dry_run_does_not_write(temporal_env, tmp_path, monkeypat
 def test_workflow_is_discovered():
     classes = workflows.discover_all_workflows_in_package("worker.workflows")
     names = [workflows.get_workflow_definition(c).name for c in classes]
-    assert "pdf-merge-duplex" in names
+    assert "pdf-alternating-merge" in names
