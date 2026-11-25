@@ -34,9 +34,11 @@ reports that everything is one coherent document. Otherwise the
 proposed split points and titles are applied.
 
 The parts are created in the same folder as the original file. The original
-is moved as a backup to "<folder>/.originals/pdf-split/<stem>/".
-".originals" is the uniform storage location for originals of all workflows
-(one subfolder per workflow, one further folder per file). The
+is moved as a backup to "<folder>/.originals/pdf-split/<name>" (directly,
+no per-file subfolder: a split has exactly one source file, so the workflow
+folder alone already groups it). ".originals" is the uniform storage
+location for originals of all workflows (one subfolder per workflow;
+pdf-alternating-merge adds one per merge target). The
 workflow never overwrites anything: existing names get counter suffixes.
 
 The workflow is started directly (Studio or chat) or called by
@@ -325,20 +327,7 @@ async def split_file(
         originals_root = originals_dir(parent, "pdf-split")
         await ensure_folder(nc, originals_root)
         arch_names = await list_names(nc, originals_root)
-        park_dir = f"{originals_root}/{unique_filename(stem, arch_names)}"
-        try:
-            await nc_call(
-                nc,
-                "files_mkdir",
-                {"path": park_dir, "confirm": True, "confirm_shared": True},
-            )
-        except Exception as setup_error:
-            logger.debug(
-                "files_mkdir %s skipped (probably exists): %s",
-                park_dir,
-                setup_error,
-            )
-        moved_to = f"{park_dir}/{base_name}"
+        moved_to = f"{originals_root}/{unique_filename(base_name, arch_names)}"
         await nc_call(
             nc,
             "files_move",

@@ -50,7 +50,7 @@ Built into the project (code and base prompt):
 
 - The project itself defines **no file name schema** — names are chosen by the LLM. The project only sanitizes names technically (ASCII, umlauts transliterated, max. 80 characters) and never overwrites files (collisions get `_2`, `_3`, ...). Merged front/back pairs first get the intermediate name `ScanMerged<N>.pdf` (N = larger scan number of the pair) and are renamed to the final name afterwards.
 - The LLM names and asks in the language of the document.
-- **Originals are always backed up** under `<folder>/.originals/<workflow>/` — on by default in all four workflows (split and merge use a subfolder per file/target). The workflows never delete anything; clean up `.originals/` by hand once you have verified the results.
+- **Originals are always backed up** under `<folder>/.originals/<workflow>/` — on by default in all four workflows (merge uses a subfolder per target; the others park the file directly). The workflows never delete anything; clean up `.originals/` by hand once you have verified the results.
 - OCR, download and upload activities send heartbeats: a crashed worker is detected within ~2 minutes and the activity is retried automatically.
 
 Naming conventions come from your `AGENTS.md` — **not part of this repository**:

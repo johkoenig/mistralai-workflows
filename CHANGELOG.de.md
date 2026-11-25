@@ -11,6 +11,7 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), und d
 ### Changed
 
 - `CHANGELOG.md` / `CHANGELOG.de.md` folgen jetzt dem Format [Keep a Changelog](https://keepachangelog.com/de/1.1.0/): versionierte Abschnitte mit Unterabschnitten `Added` / `Changed` / `Removed` / `Fixed` und Link-Definitionen am Ende.
+- `pdf-split` parkt das Original direkt unter `.originals/pdf-split/<Name>` — kein `<Stamm>/`-Unterordner pro Datei mehr (ein Split hat genau eine Quelldatei, der Unterordner enthielt also immer nur eine Datei). Nur `pdf-alternating-merge` nutzt weiterhin einen Unterordner (pro Misch-Ziel).
 
 ### Fixed
 

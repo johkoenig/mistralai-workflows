@@ -43,7 +43,7 @@ Discovery after every start: the worker automatically registers all workflow mod
 
 - **Dry run first**: always check new or changed workflows with `apply_changes: false` against a real document first.
 - **Manual starts only**: no schedule, no webhook; rationale in ARCHITECTURE.md. Heavy processing only after a completed scan job.
-- **Originals are kept**: every workflow secures originals by default under `<folder>/.originals/<workflow>/` (split: `<stem>/` subfolder, alternating merge: `<target name>/` subfolder, OCR and pdf-scanner-processor: the file itself). Clean up by hand once the results are verified; the workflows never delete.
+- **Originals are kept**: every workflow secures originals by default under `<folder>/.originals/<workflow>/` (alternating merge: `<target name>/` subfolder; split, OCR and pdf-scanner-processor: the file itself). Clean up by hand once the results are verified; the workflows never delete.
 
 ## Naming rules (AGENTS.md)
 

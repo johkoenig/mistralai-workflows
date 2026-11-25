@@ -11,7 +11,7 @@ All workflows:
 - let the LLM choose file names — the project itself defines no name schema, it only sanitizes technically (ASCII, umlauts transliterated, max. 80 characters);
 - read the nearest naming rules from `AGENTS.md` (the folder itself or a parent folder; max. 4000 characters; if none exists: the LLM picks a suitable name itself), whenever the AI names something; those rules take precedence over the base prompt and are not part of the project;
 - never overwrite files (collisions get `_2`, `_3`, ...);
-- secure originals under `<folder>/.originals/<workflow>/` before anything is modified (per-workflow subfolder where useful: `pdf-split` and `pdf-alternating-merge` create one per file/target, `pdf-ocr` and `pdf-scanner-processor` park the file directly); backups are on by default in every workflow, and `.originals` is never scanned or reprocessed.
+- secure originals under `<folder>/.originals/<workflow>/` before anything is modified (`pdf-alternating-merge` creates one subfolder per merge target; all other workflows park the file directly); backups are on by default in every workflow, and `.originals` is never scanned or reprocessed.
 
 ## Result and action glossary
 
@@ -82,7 +82,7 @@ Generic OCR processor for a single PDF or a folder (`recursive: true` also subfo
 
 ## pdf-split
 
-Splits a PDF into parts and names them; the parts stay in the folder of the original, the original is secured under `.originals/pdf-split/<stem>/`.
+Splits a PDF into parts and names them; the parts stay in the folder of the original, the original is secured under `.originals/pdf-split/<name>`.
 
 **Input**
 

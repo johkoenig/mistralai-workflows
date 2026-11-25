@@ -50,7 +50,7 @@ Im Projekt eingebaut (Code und Basis-Prompt):
 
 - Das Projekt selbst definiert **kein Dateinamensschema** — Namen wählt das LLM. Das Projekt bereinigt Namen nur technisch (ASCII, Umlaute transliteriert, max. 80 Zeichen) und überschreibt nie Dateien (Kollisionen bekommen `_2`, `_3`, ...). Gemischte Vorder-/Rückseiten-Paare bekommen zuerst den Zwischennamen `ScanMerged<N>.pdf` (N = größere Scan-Nummer des Paares) und werden danach in den endgültigen Namen umbenannt.
 - Das LLM benennt und fragt in der Sprache des Dokuments.
-- **Originale werden immer gesichert** unter `<Ordner>/.originals/<Workflow>/` — in allen vier Workflows standardmäßig an (Split und Merge legen pro Datei/Ziel einen Unterordner an). Die Workflows löschen nie etwas; `.originals/` räumst du nach der Prüfung von Hand auf.
+- **Originale werden immer gesichert** unter `<Ordner>/.originals/<Workflow>/` — in allen vier Workflows standardmäßig an (Merge legt pro Ziel einen Unterordner an, die anderen parken die Datei direkt). Die Workflows löschen nie etwas; `.originals/` räumst du nach der Prüfung von Hand auf.
 - OCR-, Download- und Upload-Aktivitäten senden Heartbeats: ein abgestürzter Worker wird binnen ~2 Minuten erkannt und die Aktivität automatisch wiederholt.
 
 Benennungskonventionen kommen aus deiner `AGENTS.md` — **nicht Teil dieses Repositories**:

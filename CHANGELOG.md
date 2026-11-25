@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - `CHANGELOG.md` / `CHANGELOG.de.md` now follow the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format: versioned sections with `Added` / `Changed` / `Removed` / `Fixed` subsections and link definitions at the bottom.
+- `pdf-split` parks the original directly under `.originals/pdf-split/<name>` — no per-file `<stem>/` subfolder anymore (a split has exactly one source file, so the subfolder always contained exactly one file). Only `pdf-alternating-merge` still uses a subfolder (per merge target).
 
 ### Fixed
 

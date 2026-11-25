@@ -11,7 +11,7 @@ Alle Workflows:
 - lassen Dateinamen von der KI wählen — das Projekt selbst definiert kein Namensschema, es bereinigt nur technisch (ASCII, Umlaute transliteriert, max. 80 Zeichen);
 - lesen die nächstliegende Benennungsregeln aus `AGENTS.md` (der Ordner selbst oder ein darüberliegender; max. 4000 Zeichen; existiert keine: wählt die KI selbst einen passenden Namen), wann immer die KI benennt; diese Regeln gehen vor dem Basis-Prompt und sind nicht Teil des Projekts;
 - überschreiben niemals Dateien (Kollisionen erhalten `_2`, `_3`, ...);
-- sichern Originale vor jeder Änderung unter `<Ordner>/.originals/<Workflow>/` (pro Workflow ggf. ein weiterer Unterordner: `pdf-split` und `pdf-alternating-merge` legen einen pro Datei/Ziel an, `pdf-ocr` und `pdf-scanner-processor` parken die Datei direkt); Backups sind in jedem Workflow standardmäßig an, und `.originals` wird nie durchsucht oder erneut verarbeitet.
+- sichern Originale vor jeder Änderung unter `<Ordner>/.originals/<Workflow>/` (`pdf-alternating-merge` legt pro Misch-Ziel einen Unterordner an, alle anderen parken die Datei direkt); Backups sind in jedem Workflow standardmäßig an, und `.originals` wird nie durchsucht oder erneut verarbeitet.
 
 ## Ergebnis- und Action-Glossar
 
@@ -84,7 +84,7 @@ Generischer OCR-Prozessor für eine einzelne PDF oder einen Ordner (`recursive: 
 
 ## pdf-split
 
-Teilt eine PDF in Teile und benennt sie; Teile bleiben im Ordner der Originaldatei, das Original wird nach `.originals/pdf-split/<Stamm>/` gesichert.
+Teilt eine PDF in Teile und benennt sie; Teile bleiben im Ordner der Originaldatei, das Original wird nach `.originals/pdf-split/<Name>` gesichert.
 
 **Input**
 
