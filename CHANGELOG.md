@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `CHANGELOG.md` / `CHANGELOG.de.md` now follow the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format: versioned sections with `Added` / `Changed` / `Removed` / `Fixed` subsections and link definitions at the bottom.
 
+### Fixed
+
+- `pdf-split` AI planning prompt now carries explicit document-boundary heuristics: a changed date, a changed (running) page number (new 'Seite 1 von 2' / 'Page 1 of 2' run) or a new company letterhead at the top of a page indicate a new document — except a company name appearing only via third-party billing ('Fremdleistung im Namen von XY' / 'on behalf of XY'). The model must also verify each planned boundary before finalizing and remove (merge back) boundaries that would cut through one coherent document.
+
 ## [0.2.0] - 2026-11-24
 
 Two-level architecture: three single-purpose step workflows plus one orchestrator that runs the whole scan-inbox process end to end.

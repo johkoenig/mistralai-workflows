@@ -12,6 +12,10 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), und d
 
 - `CHANGELOG.md` / `CHANGELOG.de.md` folgen jetzt dem Format [Keep a Changelog](https://keepachangelog.com/de/1.1.0/): versionierte Abschnitte mit Unterabschnitten `Added` / `Changed` / `Removed` / `Fixed` und Link-Definitionen am Ende.
 
+### Fixed
+
+- Der AI-Planungs-Prompt von `pdf-split` enthält jetzt explizite Dokumentgrenzen-Heuristiken: ein geändertes Datum, eine geänderte (laufende) Seitenzahl (neuer Lauf 'Seite 1 von 2' / 'Page 1 of 2') oder ein neuer Firmen-Briefkopf oben auf einer Seite deuten auf ein neues Dokument hin — außer ein Firmenname, der nur wegen Fremdleistung/Durchberechnung im Namen von jemandem steht ('im Namen von XY' / 'on behalf of XY'). Das Modell muss außerdem jede geplante Trennstelle vor dem Finalisieren prüfen und Trennstellen entfernen (Teile wieder zusammenführen), die mitten durch ein kohärentes Dokument schneiden würden.
+
 ## [0.2.0] - 2026-11-24
 
 Zweistufige Architektur: drei spezialisierte Step-Workflows plus ein Orchestrator, der den kompletten Scan-Inbox-Prozess von vorne bis hinten fährt.
