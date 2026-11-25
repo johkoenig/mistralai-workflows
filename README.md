@@ -37,7 +37,7 @@ All four are started **manually** (Studio, chat, or MCP `execute_workflow`) — 
 | `pairs` / `control_file` | Duplex pairs for `pdf-alternating-merge`: inline list or path of a JSON control file | one of the two is required |
 | `split_at` | Explicit split points for `pdf-split`: page numbers (1-based) after which the PDF is cut | LLM-planned split points |
 | `merge_front_back` | Orchestrator: detect and merge front/back pairs | `true` |
-| `split_parts` | Orchestrator: run the split step on every resulting file | `true` |
+| `split_parts` | Orchestrator: run the split step on every unit before naming | `true` |
 | `apply_changes` | `false` = dry run: everything is read, OCRed and planned, nothing is written | `true` |
 | `model` | LLM for naming, planning and the front/back check | `mistral-small-latest` |
 | `connector` | File connector from `FILE_CONNECTOR_NAMES` that this call should target | default connector |

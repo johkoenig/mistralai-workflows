@@ -15,7 +15,7 @@ Orchestrator in `workflows/`, der sie als Child-Workflows aufruft.
 
 | Workflow | Aufgabe | Trigger |
 |---|---|---|
-| pdf-scanner-processor | Orchestrator: OCR, Vorder-/Rueckseiten-Erkennung + Mischen, Benennung, Split ueber den Scanner-Eingang | manuell |
+| pdf-scanner-processor | Orchestrator: OCR, Vorder-/Rueckseiten-Erkennung + Mischen, Split, Benennung ueber den Scanner-Eingang | manuell |
 | pdf-ocr | PDFs ohne Textebene aufbereiten (eine Datei, ein Ordner, optional rekursiv) | manuell oder Child von pdf-scanner-processor |
 | pdf-alternating-merge | Duplex-Paare alternierend mischen (pairs-Input oder Steuerdatei) | manuell oder Child von pdf-scanner-processor |
 | pdf-split | PDF in Teile zerlegen (explizite Trennstellen oder LLM-Planung mit Rueckfrage), Original nach .originals/pdf-split/ | manuell oder Child von pdf-scanner-processor |

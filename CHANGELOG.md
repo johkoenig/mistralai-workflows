@@ -8,10 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-24
+
 ### Changed
 
-- `CHANGELOG.md` / `CHANGELOG.de.md` now follow the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format: versioned sections with `Added` / `Changed` / `Removed` / `Fixed` subsections and link definitions at the bottom.
+- `pdf-scanner-processor` now runs `pdf-split` **before** naming (Closes #26): splitting is content-based, not name-based, and the split step names its parts via the LLM itself — naming the pre-split file first was a wasted LLM call. Only units that were NOT split are renamed afterwards (`name-document`, nearest AGENTS.md rules, confidence >= 0.7, otherwise `left_unchanged`); split parts are reported as `named_by_split` in the result actions.
 - `pdf-split` parks the original directly under `.originals/pdf-split/<name>` — no per-file `<stem>/` subfolder anymore (a split has exactly one source file, so the subfolder always contained exactly one file). Only `pdf-alternating-merge` still uses a subfolder (per merge target).
+- `CHANGELOG.md` / `CHANGELOG.de.md` now follow the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format: versioned sections with `Added` / `Changed` / `Removed` / `Fixed` subsections and link definitions at the bottom.
+- Product packages (`workflows-app`, `cli`, `env`, `utils`) bumped to 0.2.1.
 
 ### Fixed
 
@@ -61,5 +65,6 @@ First public release of `mistralai-workflows`. Mistral workflows for scanner and
 The git history was squashed to a single commit when the repository was recreated for publication; earlier PR references no longer resolve.
 
 [Unreleased]: https://github.com/johkoenig/mistralai-workflows/compare/d2e3984...HEAD
+[0.2.1]: https://github.com/johkoenig/mistralai-workflows/pull/27
 [0.2.0]: https://github.com/johkoenig/mistralai-workflows/compare/a2db23a...d2e3984
 [0.1.0]: https://github.com/johkoenig/mistralai-workflows/tree/a2db23a

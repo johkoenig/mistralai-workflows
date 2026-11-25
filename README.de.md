@@ -37,7 +37,7 @@ Alle vier werden **ausschließlich manuell** gestartet (Studio, Chat oder MCP `e
 | `pairs` / `control_file` | Duplex-Paare für `pdf-alternating-merge`: Inline-Liste oder Pfad einer JSON-Steuerdatei | eines von beiden erforderlich |
 | `split_at` | Explizite Trennstellen für `pdf-split`: Seitenzahlen (1-basiert), nach denen geschnitten wird | LLM-geplante Trennstellen |
 | `merge_front_back` | Orchestrator: Vorder-/Rückseiten-Paare erkennen und mischen | `true` |
-| `split_parts` | Orchestrator: Split-Step auf jede Ergebnisdatei anwenden | `true` |
+| `split_parts` | Orchestrator: Split-Step vor der Benennung auf jede Einheit anwenden | `true` |
 | `apply_changes` | `false` = Dry-Run: alles wird gelesen, OCRed und geplant, geschrieben wird nichts | `true` |
 | `model` | LLM für Benennung, Planung und den Vorder-/Rückseiten-Check | `mistral-small-latest` |
 | `connector` | Datei-Connector aus `FILE_CONNECTOR_NAMES`, den dieser Aufruf ansprechen soll | Default-Connector |

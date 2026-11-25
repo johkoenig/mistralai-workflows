@@ -23,15 +23,19 @@ workflows in workflows/steps/ - each step is also directly triggerable on its ow
 4. Step pdf-alternating-merge per confirmed pair with the intermediate title
    "ScanMerged<N>.pdf" (N = larger scan number of the pair). The sources are
    archived under .originals/pdf-alternating-merge/<target>/.
-5. Naming via name-document: the naming conventions come from the nearest
-   AGENTS.md (the inbox folder or a parent folder) and take precedence over
-   the base prompt; without an AGENTS.md the LLM picks a suitable name itself.
-   Confidence below the threshold -> left unchanged. Rename only.
-6. Step pdf-split per resulting file; it splits only when confident, otherwise
-   the file stays as it is.
+5. Step pdf-split per unit - BEFORE naming: splitting is content-based, not
+   name-based, and the split step names its parts via the LLM itself, so a
+   pre-split name would be discarded anyway. It splits only when confident,
+   otherwise the file stays as it is.
+6. Naming via name-document per unit that was NOT split (parts of split units
+   are already named by pdf-split; merged pairs via combined text): the naming
+   conventions come from the nearest AGENTS.md (the inbox folder or a parent
+   folder) and take precedence over the base prompt; without an AGENTS.md the
+   LLM picks a suitable name itself. Confidence below the threshold ->
+   left unchanged. Rename only.
 
 apply_changes=false (dry run) plans everything and writes nothing.
-Step switches: merge_front_back=false skips step 4, split_parts=false skips step 6.
+Step switches: merge_front_back=false skips step 4, split_parts=false skips step 5.
 
 Child workflows get deterministic execution IDs ({run}-{step}-{item}), so a
 replayed run reuses the existing child executions instead of duplicating them.
@@ -229,9 +233,10 @@ async def rename_scan_file(
     workflow_description=(
         "End-to-end processing of a scanner inbox folder: OCR of new scans, "
         "detection and alternating merge of front/back pairs (intermediate "
-        "ScanMerged<N>.pdf), LLM naming (per the nearest AGENTS.md; without one "
-        "the LLM picks a suitable name) and a confidence-checked split of "
-        "multi-part PDFs - built from the step workflows pdf-ocr, "
+        "ScanMerged<N>.pdf), a confidence-checked split of multi-part PDFs "
+        "(the split step names its parts), then LLM naming of the remaining "
+        "files (per the nearest AGENTS.md; without one the LLM picks a "
+        "suitable name) - built from the step workflows pdf-ocr, "
         "pdf-alternating-merge and pdf-split. Uncertain cases are left unchanged."
     ),
     on_behalf_of=True,
@@ -243,7 +248,7 @@ class PdfScannerProcessorWorkflow:
 
     @workflows.workflow.entrypoint
     async def run(self, input: PdfScannerProcessorInput) -> dict[str, Any]:
-        """Runs the pipeline: park raw scans, OCR, detect, merge, name, split."""
+        """Runs the pipeline: park raw scans, OCR, detect, merge, split, name."""
         folder = input.folder_path.rstrip("/") if input.folder_path else ""
         if not folder:
             return {
@@ -429,16 +434,79 @@ class PdfScannerProcessorWorkflow:
                             }
                         )
 
-        # 5) Naming: LLM title + date per unit (merged pairs via combined text),
-        #    rename only when confident.
+        # 5) Split per unit via the pdf-split step (parallel) - BEFORE naming:
+        #    splitting is content-based, not name-based, and the split step
+        #    names its parts via the LLM itself, so naming the pre-split file
+        #    first would be a wasted LLM call. The step splits only when
+        #    confident, otherwise the file stays as it is.
+        split_results: list[dict[str, Any]] = []
+        if input.split_parts:
+
+            async def split_bounded(index: int, unit: dict[str, Any]) -> dict[str, Any]:
+                if unit["kind"] == "merged" and not input.apply_changes:
+                    # In a dry run the merged file is only planned, not created.
+                    return {
+                        "step": "split",
+                        "files": [f["name"] for f in unit["files"]],
+                        "target": unit["path"],
+                        "action": "deferred",
+                        "reason": "merged file is only planned in a dry run",
+                    }
+                async with semaphore:
+                    handle = await workflows.workflow.execute_workflow(
+                        STEPS["split"],
+                        PdfSplitInput(
+                            target_path=unit["path"],
+                            apply_changes=input.apply_changes,
+                            model=input.model,
+                            connector=connector,
+                        ),
+                        execution_id=f"{run_id}-split-{index}",
+                        wait=False,
+                    )
+                    result = await handle
+                return {
+                    "step": "split",
+                    "files": [f["name"] for f in unit["files"]],
+                    "target": unit["path"],
+                    "action": result.get("action"),
+                    "result": result,
+                }
+
+            split_results = list(
+                await asyncio.gather(
+                    *(split_bounded(i, unit) for i, unit in enumerate(units))
+                )
+            )
+            actions.extend(split_results)
+
+        # 6) Naming: LLM title + date per unit that was NOT split (merged pairs
+        #    via combined text; parts of split units are already named by the
+        #    pdf-split step). Rename only when confident.
         rules = (await load_naming_rules(folder, connector))["rules"]
         taken = set(listing["existing_names"])
         for unit in units:
             if unit["kind"] == "merged":
                 # str ops only: the workflow sandbox restricts os.path
                 taken.add(unit["path"].rsplit("/", 1)[-1])
-        for unit in units:
+        for index, unit in enumerate(units):
+            split_action = split_results[index] if index < len(split_results) else None
             names = [f["name"] for f in unit["files"]]
+            if split_action and split_action.get("action") in ("split", "planned"):
+                parts = [
+                    str(part.get("to", "")).rsplit("/", 1)[-1]
+                    for part in (split_action.get("result") or {}).get("parts", [])
+                ]
+                actions.append(
+                    {
+                        "step": "name",
+                        "files": names,
+                        "action": "named_by_split",
+                        "path": unit["path"],
+                        "parts": parts,
+                    }
+                )
+                continue
             naming = await name_document(unit["text"], input.model, rules)
             if naming["confidence"] < MIN_NAMING_CONFIDENCE or not naming["title"]:
                 actions.append(
@@ -451,7 +519,6 @@ class PdfScannerProcessorWorkflow:
                         "reason": "naming or date not confident enough",
                     }
                 )
-                unit["final_path"] = unit["path"]
                 continue
             target_name = unique_filename(
                 build_filename(naming["date"], naming["title"]), taken
@@ -469,7 +536,6 @@ class PdfScannerProcessorWorkflow:
                         "confidence": naming["confidence"],
                     }
                 )
-                unit["final_path"] = target_path
                 continue
             await rename_scan_file(unit["path"], target_path, connector)
             actions.append(
@@ -481,48 +547,6 @@ class PdfScannerProcessorWorkflow:
                     "to": target_path,
                     "confidence": naming["confidence"],
                 }
-            )
-            unit["final_path"] = target_path
-
-        # 6) Split per resulting file via the pdf-split step (parallel); the step
-        #    splits only when confident, otherwise the file stays as it is.
-        if input.split_parts:
-
-            async def split_bounded(index: int, unit: dict[str, Any]) -> dict[str, Any]:
-                if unit["kind"] == "merged" and not input.apply_changes:
-                    # In a dry run the merged file is only planned, not created.
-                    return {
-                        "step": "split",
-                        "files": [f["name"] for f in unit["files"]],
-                        "target": unit["final_path"],
-                        "action": "deferred",
-                        "reason": "merged file is only planned in a dry run",
-                    }
-                async with semaphore:
-                    handle = await workflows.workflow.execute_workflow(
-                        STEPS["split"],
-                        PdfSplitInput(
-                            target_path=unit["final_path"],
-                            apply_changes=input.apply_changes,
-                            model=input.model,
-                            connector=connector,
-                        ),
-                        execution_id=f"{run_id}-split-{index}",
-                        wait=False,
-                    )
-                    result = await handle
-                return {
-                    "step": "split",
-                    "files": [f["name"] for f in unit["files"]],
-                    "target": unit["final_path"],
-                    "action": result.get("action"),
-                    "result": result,
-                }
-
-            actions.extend(
-                await asyncio.gather(
-                    *(split_bounded(i, unit) for i, unit in enumerate(units))
-                )
             )
 
         return {"folder": folder, "applied": input.apply_changes, "actions": actions}

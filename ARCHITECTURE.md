@@ -16,7 +16,7 @@ orchestrator in `workflows/` that calls them as child workflows.
 
 | Workflow | Task | Trigger |
 |---|---|---|
-| pdf-scanner-processor | orchestrator: OCR, front/back detection + merge, naming, split over the scanner inbox | manual |
+| pdf-scanner-processor | orchestrator: OCR, front/back detection + merge, split, naming over the scanner inbox | manual |
 | pdf-ocr | process PDFs without a text layer (one file, one folder, optionally recursive) | manual or child of pdf-scanner-processor |
 | pdf-alternating-merge | interleave duplex pairs alternately (pairs input or control file) | manual or child of pdf-scanner-processor |
 | pdf-split | split a PDF into parts (explicit split points or LLM planning with a follow-up question), original moved to .originals/pdf-split/ | manual or child of pdf-scanner-processor |

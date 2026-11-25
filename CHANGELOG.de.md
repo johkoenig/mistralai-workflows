@@ -8,10 +8,14 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), und d
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-24
+
 ### Changed
 
-- `CHANGELOG.md` / `CHANGELOG.de.md` folgen jetzt dem Format [Keep a Changelog](https://keepachangelog.com/de/1.1.0/): versionierte Abschnitte mit Unterabschnitten `Added` / `Changed` / `Removed` / `Fixed` und Link-Definitionen am Ende.
+- `pdf-scanner-processor` führt `pdf-split` jetzt **vor** der Benennung aus (Closes #26): Das Splitten basiert auf dem Inhalt, nicht auf dem Dateinamen, und der Split-Step benennt seine Teile selbst per LLM — die Benennung der ungesplitteten Datei vorher war ein vergeudeter LLM-Call. Nur Einheiten, die NICHT gesplittet wurden, werden danach umbenannt (`name-document`, nächstliegende AGENTS.md-Regeln, confidence >= 0.7, sonst `left_unchanged`); Split-Teile werden in den Ergebnis-Actions als `named_by_split` reported.
 - `pdf-split` parkt das Original direkt unter `.originals/pdf-split/<Name>` — kein `<Stamm>/`-Unterordner pro Datei mehr (ein Split hat genau eine Quelldatei, der Unterordner enthielt also immer nur eine Datei). Nur `pdf-alternating-merge` nutzt weiterhin einen Unterordner (pro Misch-Ziel).
+- `CHANGELOG.md` / `CHANGELOG.de.md` folgen jetzt dem Format [Keep a Changelog](https://keepachangelog.com/de/1.1.0/): versionierte Abschnitte mit Unterabschnitten `Added` / `Changed` / `Removed` / `Fixed` und Link-Definitionen am Ende.
+- Produkt-Pakete (`workflows-app`, `cli`, `env`, `utils`) auf 0.2.1 angehoben.
 
 ### Fixed
 
@@ -61,5 +65,6 @@ Erstes öffentliches Release von `mistralai-workflows`. Mistral-Workflows für S
 Die Git-Historie wurde bei der Neuerstellung des Repositories für die Veröffentlichung auf einen einzigen Commit squashed; frühere PR-Referenzen lösen nicht mehr auf.
 
 [Unreleased]: https://github.com/johkoenig/mistralai-workflows/compare/d2e3984...HEAD
+[0.2.1]: https://github.com/johkoenig/mistralai-workflows/pull/27
 [0.2.0]: https://github.com/johkoenig/mistralai-workflows/compare/a2db23a...d2e3984
 [0.1.0]: https://github.com/johkoenig/mistralai-workflows/tree/a2db23a
