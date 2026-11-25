@@ -532,13 +532,29 @@ SPLIT_SYSTEM_PROMPT = (
     "(ascending, no duplicates, between page 1 and the second-to-last page). "
     "If everything is exactly one coherent document, return an empty "
     "array []. "
-    '2) "titles" contains one short, meaningful title per resulting part in the '
+    "2) Signals that a NEW document starts on a page (put that page number into "
+    "split_at): "
+    "(a) the date changes - a changed date is always a good indicator; "
+    "(b) a page number changes, especially a running page number like "
+    "'Seite 1 von 2' / 'Page 1 of 2' - a new 'x of y' run almost certainly "
+    "means a new document; "
+    "(c) a new company name / letterhead appears at the top of the page - if "
+    "the company or contract partner changes, the document (e.g. an invoice) "
+    "almost always changes there as well. "
+    "Exception to (c): the other company may appear only because a third-party "
+    "service was billed or passed through on someone else's behalf (e.g. "
+    "'Fremdleistung im Namen von XY' / 'on behalf of XY') - that is NOT a new "
+    "document. "
+    "3) Verify every planned boundary before finalizing: if a boundary would cut "
+    "through one coherent document, remove it (merge the affected parts back "
+    "together) and re-plan - keep only boundaries you are sure about. "
+    '4) "titles" contains one short, meaningful title per resulting part in the '
     "language of the document (max 80 characters; date, sender or subject if "
     'evident); the number of "titles" must match the number of parts '
     "(exactly one title when split_at is empty). "
-    '3) "confidence" (0.0 to 1.0) rates how certain you are about the split '
+    '5) "confidence" (0.0 to 1.0) rates how certain you are about the split '
     "points and titles. "
-    "4) If the texts are ambiguous or a split point could fall in the middle of a "
+    "6) If the texts are ambiguous or a split point could fall in the middle of a "
     'document, set "needs_input": true and put a concrete, briefly answerable '
     'question in "question" (in the language of the document). '
     'Answer with JSON only: {"split_at": [n], "titles": ["..."], '

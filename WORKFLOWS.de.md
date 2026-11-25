@@ -97,6 +97,8 @@ Teilt eine PDF in Teile und benennt sie; Teile bleiben im Ordner der Originaldat
 - `titles`: explizite Teilnamen (Anzahl muss passen); schalten die AI-Benennung ab.
 - `name_parts` (Standard `true`): AI-Benennung; `false` => `<Stamm> Teil-N.pdf`.
 
+Heuristiken der AI-Planung (im Split-Prompt): Ein NEUES Dokument wird angenommen, wenn sich das Datum ändert, wenn sich eine (laufende) Seitenzahl ändert (z. B. ein neuer Lauf 'Seite 1 von 2' beginnt) oder wenn oben auf einer Seite ein neuer Firmenname/Briefkopf steht — eine geänderte Firma oder ein geänderter Vertragspartner bedeutet fast immer ein neues Dokument (z. B. Rechnung). Ausnahme: Ein Firmenname, der nur erscheint, weil eine Fremdleistung im Namen von jemandem abgerechnet oder durchgerechnet wurde ('Fremdleistung im Namen von XY' / 'on behalf of XY'), ist KEIN neues Dokument. Das Modell prüft außerdem jede geplante Trennstelle vor dem Finalisieren und entfernt Trennstellen (führt betroffene Teile wieder zusammen), die mitten durch ein kohärentes Dokument schneiden würden.
+
 AI-benannte Teile heißen `<Titel>.pdf` (kein Stamm-Präfix), benannt nach den nächstliegenden AGENTS.md-Regeln.
 
 **Ergebnis**: `{target, applied, action, pages, parts[], original?}`; `action` aus `planned` / `split` / `no_split` / `clarification` / `error`, `parts` mit `pages` (z. B. `"1-2"`), `count`, `to`.

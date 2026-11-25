@@ -174,3 +174,14 @@ class TestNamingRulesAreAgentsMdDriven:
         result = await pdf_ops.load_naming_rules("/Dokumente/Scans/Inbox")
 
         assert result == {"rules": "", "source": None}
+
+
+def test_split_prompt_contains_document_boundary_heuristics():
+    prompt = pdf_ops.SPLIT_SYSTEM_PROMPT
+    # date change, running page numbers, company letterhead, third-party
+    # exception, and self-verification of planned boundaries
+    assert "date changes" in prompt
+    assert "Seite 1 von 2" in prompt and "Page 1 of 2" in prompt
+    assert "company name" in prompt and "contract partner" in prompt
+    assert "im Namen von XY" in prompt and "on behalf of XY" in prompt
+    assert "Verify every planned boundary" in prompt

@@ -95,6 +95,8 @@ Splits a PDF into parts and names them; the parts stay in the folder of the orig
 - `titles`: explicit part names (count must match); disable AI naming.
 - `name_parts` (default `true`): AI naming; `false` => `<stem> Teil-N.pdf`.
 
+AI planning heuristics (in the split prompt): a NEW document is assumed when the date changes, when a (running) page number changes (e.g. a new 'Seite 1 von 2' / 'Page 1 of 2' run starts), or when a new company name / letterhead appears at the top of a page — a changed company or contract partner almost always means a new document (e.g. invoice). Exception: a company name that appears only because a third-party service was billed or passed through on someone else's behalf ('Fremdleistung im Namen von XY' / 'on behalf of XY') is NOT a new document. The model also verifies every planned boundary before finalizing and removes (merges back) boundaries that would cut through one coherent document.
+
 AI-named parts are called `<title>.pdf` (no stem prefix), named by the nearest AGENTS.md rules.
 
 **Result**: `{target, applied, action, pages, parts[], original?}`; `action` from `planned` / `split` / `no_split` / `clarification` / `error`, `parts` with `pages` (e.g. `"1-2"`), `count`, `to`.
