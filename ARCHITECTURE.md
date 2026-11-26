@@ -16,7 +16,7 @@ orchestrator in `workflows/` that calls them as child workflows.
 
 | Workflow | Task | Trigger |
 |---|---|---|
-| pdf-scanner-processor | orchestrator: OCR, front/back detection + merge, naming, split over the scanner inbox | manual |
+| pdf-scanner-processor | orchestrator: OCR, front/back detection + merge, split, naming over the scanner inbox | manual |
 | pdf-ocr | process PDFs without a text layer (one file, one folder, optionally recursive) | manual or child of pdf-scanner-processor |
 | pdf-alternating-merge | interleave duplex pairs alternately (pairs input or control file) | manual or child of pdf-scanner-processor |
 | pdf-split | split a PDF into parts (explicit split points or LLM planning with a follow-up question), original moved to .originals/pdf-split/ | manual or child of pdf-scanner-processor |
@@ -159,4 +159,4 @@ pdf-split has two AI steps, both individually switchable:
 
 ## Original-file custody (.originals)
 
-Secured originals are stored uniformly under `<folder>/.originals/<workflow>/`, on by default in every workflow. pdf-split parks the original under `.originals/pdf-split/<stem>/` (one folder per file, repeated runs create counter suffixes instead of overwriting); pdf-alternating-merge backs the pair sources up under `.originals/pdf-alternating-merge/<target name>/`; pdf-ocr moves the original to `.originals/pdf-ocr/<name>`; pdf-scanner-processor parks a copy of each raw scan under `.originals/pdf-scanner-processor/` before anything modifies it. Benefit: one place to inspect and clean up ("what may go away at some point?").
+Secured originals are stored uniformly under `<folder>/.originals/<workflow>/`, on by default in every workflow. pdf-split parks the original directly under `.originals/pdf-split/<name>/` (no per-file subfolder — a split has exactly one source file; repeated runs create counter suffixes instead of overwriting); pdf-alternating-merge backs the pair sources up under `.originals/pdf-alternating-merge/<target name>/`; pdf-ocr moves the original to `.originals/pdf-ocr/<name>`; pdf-scanner-processor parks a copy of each raw scan under `.originals/pdf-scanner-processor/` before anything modifies it. Benefit: one place to inspect and clean up ("what may go away at some point?").

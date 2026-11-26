@@ -326,7 +326,7 @@ wheels = [
 
 [[package]]
 name = "cli"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "packages/py/cli" }
 dependencies = [
     { name = "env" },
@@ -428,7 +428,7 @@ wheels = [
 
 [[package]]
 name = "env"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "packages/py/env" }
 dependencies = [
     { name = "pydantic-settings" },
@@ -2186,7 +2186,7 @@ wheels = [
 
 [[package]]
 name = "utils"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "packages/py/utils" }
 dependencies = [
     { name = "env" },
@@ -2261,7 +2261,7 @@ wheels = [
 
 [[package]]
 name = "workflows-app"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "apps/worker" }
 dependencies = [
     { name = "env" },

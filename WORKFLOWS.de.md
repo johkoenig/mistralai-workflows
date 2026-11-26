@@ -11,7 +11,7 @@ Alle Workflows:
 - lassen Dateinamen von der KI wählen — das Projekt selbst definiert kein Namensschema, es bereinigt nur technisch (ASCII, Umlaute transliteriert, max. 80 Zeichen);
 - lesen die nächstliegende Benennungsregeln aus `AGENTS.md` (der Ordner selbst oder ein darüberliegender; max. 4000 Zeichen; existiert keine: wählt die KI selbst einen passenden Namen), wann immer die KI benennt; diese Regeln gehen vor dem Basis-Prompt und sind nicht Teil des Projekts;
 - überschreiben niemals Dateien (Kollisionen erhalten `_2`, `_3`, ...);
-- sichern Originale vor jeder Änderung unter `<Ordner>/.originals/<Workflow>/` (pro Workflow ggf. ein weiterer Unterordner: `pdf-split` und `pdf-alternating-merge` legen einen pro Datei/Ziel an, `pdf-ocr` und `pdf-scanner-processor` parken die Datei direkt); Backups sind in jedem Workflow standardmäßig an, und `.originals` wird nie durchsucht oder erneut verarbeitet.
+- sichern Originale vor jeder Änderung unter `<Ordner>/.originals/<Workflow>/` (`pdf-alternating-merge` legt pro Misch-Ziel einen Unterordner an, alle anderen parken die Datei direkt); Backups sind in jedem Workflow standardmäßig an, und `.originals` wird nie durchsucht oder erneut verarbeitet.
 
 ## Ergebnis- und Action-Glossar
 
@@ -44,9 +44,9 @@ Orchestrator über einen Scanner-Eingangsordner (nur erste Ordnerebene): OCR, Vo
 
 - `folder_path`: Scanner-Eingang; fehlt er, gilt das Workspace-Secret `SCAN_INBOX_FOLDER` (Umgebungsvariable im Deployment).
 - `model`: LLM für die Prüfungen und die Benennung.
-- `merge_front_back: false` überspringt Paar-Erkennung/Mischen, `split_parts: false` überspringt den Split-Step.
+- `merge_front_back: false` überspringt Paar-Erkennung/Mischen, `split_parts: false` überspringt den Split-Step — die Benennung läuft dann direkt auf jede Einheit.
 
-**Ablauf**: `Scan.pdf` / `ScanNNNN.pdf` finden → Kopie jedes Roh-Scans unter `.originals/pdf-scanner-processor/` parken → Child `pdf-ocr` auf den Ordner (eigene Backups unter `.originals/pdf-ocr/`) → Scans analysieren (Seitenzahl, Textebene, Textausschnitt) → Kandidaten für Vorder-/Rückseiten-Paare (aufeinanderfolgende Scan-Reihenfolge, gleiche Seitenzahl, Größenfaktor 0.5-2.0, beide mit Textebene) per LLM-Activity `front-back-check` bestätigen (Annahme ab confidence >= 0.7; die Prüfung ist namensunabhängig, Vorder- und Rückseite dürfen also völlig anders aussehen) → Child `pdf-alternating-merge` pro bestätigtem Paar mit dem Zwischen-Titel `ScanMerged<N>.pdf` (N = größere Scan-Nummer des Paares; Quellen archiviert unter `.originals/pdf-alternating-merge/<Ziel>/`) → jede Ergebnisdatei benennen (`name-document` mit den nächstliegenden AGENTS.md-Regeln — Eingangsordner oder ein Elternordner; gemischte Paare über den kombinierten Text) → nur bei sicherer Erkennung (>= 0.7) umbenennen, sonst `left_unchanged` → Child `pdf-split` pro Ergebnisdatei (teilt nur bei sicherer Erkennung).
+**Ablauf**: `Scan.pdf` / `ScanNNNN.pdf` finden → Kopie jedes Roh-Scans unter `.originals/pdf-scanner-processor/` parken → Child `pdf-ocr` auf den Ordner (eigene Backups unter `.originals/pdf-ocr/`) → Scans analysieren (Seitenzahl, Textebene, Textausschnitt) → Kandidaten für Vorder-/Rückseiten-Paare (aufeinanderfolgende Scan-Reihenfolge, gleiche Seitenzahl, Größenfaktor 0.5-2.0, beide mit Textebene) per LLM-Activity `front-back-check` bestätigen (Annahme ab confidence >= 0.7; die Prüfung ist namensunabhängig, Vorder- und Rückseite dürfen also völlig anders aussehen) → Child `pdf-alternating-merge` pro bestätigtem Paar mit dem Zwischen-Titel `ScanMerged<N>.pdf` (N = größere Scan-Nummer des Paares; Quellen archiviert unter `.originals/pdf-alternating-merge/<Ziel>/`) → Child `pdf-split` pro Einheit VOR der Benennung (teilt nur bei sicherer Erkennung; das Splitten basiert auf dem Inhalt, und der Split-Step benennt seine Teile selbst per LLM) → jede nicht gesplittete Einheit benennen (`name-document` mit den nächstliegenden AGENTS.md-Regeln — Eingangsordner oder ein Elternordner; gemischte Paare über den kombinierten Text; Split-Teile werden als `named_by_split` reported) → nur bei sicherer Erkennung (>= 0.7) umbenennen, sonst `left_unchanged`.
 
 **Ergebnis**: `{folder, applied, actions[]}`; jeder Eintrag trägt `step` (`backup` / `ocr` / `front-back` / `merge` / `name` / `split`) plus die step-spezifischen Felder (`files`, `action`, `to`, `backup`, `confidence`, `result`, ...).
 
@@ -84,7 +84,7 @@ Generischer OCR-Prozessor für eine einzelne PDF oder einen Ordner (`recursive: 
 
 ## pdf-split
 
-Teilt eine PDF in Teile und benennt sie; Teile bleiben im Ordner der Originaldatei, das Original wird nach `.originals/pdf-split/<Stamm>/` gesichert.
+Teilt eine PDF in Teile und benennt sie; Teile bleiben im Ordner der Originaldatei, das Original wird nach `.originals/pdf-split/<Name>` gesichert.
 
 **Input**
 

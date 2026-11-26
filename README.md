@@ -37,7 +37,7 @@ All four are started **manually** (Studio, chat, or MCP `execute_workflow`) — 
 | `pairs` / `control_file` | Duplex pairs for `pdf-alternating-merge`: inline list or path of a JSON control file | one of the two is required |
 | `split_at` | Explicit split points for `pdf-split`: page numbers (1-based) after which the PDF is cut | LLM-planned split points |
 | `merge_front_back` | Orchestrator: detect and merge front/back pairs | `true` |
-| `split_parts` | Orchestrator: run the split step on every resulting file | `true` |
+| `split_parts` | Orchestrator: run the split step on every unit before naming | `true` |
 | `apply_changes` | `false` = dry run: everything is read, OCRed and planned, nothing is written | `true` |
 | `model` | LLM for naming, planning and the front/back check | `mistral-small-latest` |
 | `connector` | File connector from `FILE_CONNECTOR_NAMES` that this call should target | default connector |
@@ -50,7 +50,7 @@ Built into the project (code and base prompt):
 
 - The project itself defines **no file name schema** — names are chosen by the LLM. The project only sanitizes names technically (ASCII, umlauts transliterated, max. 80 characters) and never overwrites files (collisions get `_2`, `_3`, ...). Merged front/back pairs first get the intermediate name `ScanMerged<N>.pdf` (N = larger scan number of the pair) and are renamed to the final name afterwards.
 - The LLM names and asks in the language of the document.
-- **Originals are always backed up** under `<folder>/.originals/<workflow>/` — on by default in all four workflows (split and merge use a subfolder per file/target). The workflows never delete anything; clean up `.originals/` by hand once you have verified the results.
+- **Originals are always backed up** under `<folder>/.originals/<workflow>/` — on by default in all four workflows (merge uses a subfolder per target; the others park the file directly). The workflows never delete anything; clean up `.originals/` by hand once you have verified the results.
 - OCR, download and upload activities send heartbeats: a crashed worker is detected within ~2 minutes and the activity is retried automatically.
 
 Naming conventions come from your `AGENTS.md` — **not part of this repository**:

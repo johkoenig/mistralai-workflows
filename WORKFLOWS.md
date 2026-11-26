@@ -11,7 +11,7 @@ All workflows:
 - let the LLM choose file names — the project itself defines no name schema, it only sanitizes technically (ASCII, umlauts transliterated, max. 80 characters);
 - read the nearest naming rules from `AGENTS.md` (the folder itself or a parent folder; max. 4000 characters; if none exists: the LLM picks a suitable name itself), whenever the AI names something; those rules take precedence over the base prompt and are not part of the project;
 - never overwrite files (collisions get `_2`, `_3`, ...);
-- secure originals under `<folder>/.originals/<workflow>/` before anything is modified (per-workflow subfolder where useful: `pdf-split` and `pdf-alternating-merge` create one per file/target, `pdf-ocr` and `pdf-scanner-processor` park the file directly); backups are on by default in every workflow, and `.originals` is never scanned or reprocessed.
+- secure originals under `<folder>/.originals/<workflow>/` before anything is modified (`pdf-alternating-merge` creates one subfolder per merge target; all other workflows park the file directly); backups are on by default in every workflow, and `.originals` is never scanned or reprocessed.
 
 ## Result and action glossary
 
@@ -41,9 +41,9 @@ Orchestrator over a scanner inbox folder (top folder level only): OCR, front/bac
 ```json
 {"folder_path": "/<scanner inbox>", "apply_changes": true, "model": "mistral-small-latest", "connector": "", "merge_front_back": true, "split_parts": true}
 ```
-(The workspace secret `SCAN_INBOX_FOLDER` (environment variable in the deployment) applies when `folder_path` is omitted; `model` selects the LLM for the checks and naming; `merge_front_back: false` skips the pair detection/merge, `split_parts: false` skips the split step.)
+(The workspace secret `SCAN_INBOX_FOLDER` (environment variable in the deployment) applies when `folder_path` is omitted; `model` selects the LLM for the checks and naming; `merge_front_back: false` skips the pair detection/merge, `split_parts: false` skips the split step — naming then runs on every unit directly.)
 
-**Flow**: find `Scan.pdf` / `ScanNNNN.pdf` → park a copy of each raw scan under `.originals/pdf-scanner-processor/` → child `pdf-ocr` on the folder (its own backups under `.originals/pdf-ocr/`) → analyze the scans (page count, text layer, text snippet) → detect front/back candidates (consecutive scan order, same page count, size factor 0.5-2.0, both with text) and confirm each candidate with the LLM activity `front-back-check` (accept at confidence >= 0.7; the check is name-independent, so front and back may look completely different) → child `pdf-alternating-merge` per confirmed pair with the intermediate title `ScanMerged<N>.pdf` (N = larger scan number of the pair; sources archived under `.originals/pdf-alternating-merge/<target>/`) → name every resulting file (`name-document` with the nearest AGENTS.md rules — inbox folder or a parent folder; merged pairs via the combined text) → rename only when confident (>= 0.7), otherwise `left_unchanged` → child `pdf-split` per resulting file (splits only when confident).
+**Flow**: find `Scan.pdf` / `ScanNNNN.pdf` → park a copy of each raw scan under `.originals/pdf-scanner-processor/` → child `pdf-ocr` on the folder (its own backups under `.originals/pdf-ocr/`) → analyze the scans (page count, text layer, text snippet) → detect front/back candidates (consecutive scan order, same page count, size factor 0.5-2.0, both with text) and confirm each candidate with the LLM activity `front-back-check` (accept at confidence >= 0.7; the check is name-independent, so front and back may look completely different) → child `pdf-alternating-merge` per confirmed pair with the intermediate title `ScanMerged<N>.pdf` (N = larger scan number of the pair; sources archived under `.originals/pdf-alternating-merge/<target>/`) → child `pdf-split` per unit BEFORE naming (splits only when confident; splitting is content-based and the split step names its parts via the LLM itself) → name every unit that was NOT split (`name-document` with the nearest AGENTS.md rules — inbox folder or a parent folder; merged pairs via the combined text; split parts are reported as `named_by_split`) → rename only when confident (>= 0.7), otherwise `left_unchanged`.
 
 **Result**: `{folder, applied, actions[]}`; each action carries `step` (`backup` / `ocr` / `front-back` / `merge` / `name` / `split`) plus the step-specific fields (`files`, `action`, `to`, `backup`, `confidence`, `result`, ...).
 
@@ -82,7 +82,7 @@ Generic OCR processor for a single PDF or a folder (`recursive: true` also subfo
 
 ## pdf-split
 
-Splits a PDF into parts and names them; the parts stay in the folder of the original, the original is secured under `.originals/pdf-split/<stem>/`.
+Splits a PDF into parts and names them; the parts stay in the folder of the original, the original is secured under `.originals/pdf-split/<name>`.
 
 **Input**
 

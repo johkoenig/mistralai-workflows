@@ -369,7 +369,7 @@ async def test_auto_mode_plans_and_splits(temporal_env, tmp_path, monkeypatch):
         "action": "split",
         "pages": 6,
         "parts": [],
-        "original": "/D/.originals/pdf-split/Scan/Scan.pdf",
+        "original": "/D/.originals/pdf-split/Scan.pdf",
     }
     raw = await _run(
         temporal_env,
@@ -540,7 +540,7 @@ async def test_manual_mode_explicit_titles_skip_rules_and_plan(
         "action": "split",
         "pages": 6,
         "parts": [],
-        "original": "/D/.originals/pdf-split/Scan/Scan.pdf",
+        "original": "/D/.originals/pdf-split/Scan.pdf",
     }
     async with create_test_worker(
         temporal_env,

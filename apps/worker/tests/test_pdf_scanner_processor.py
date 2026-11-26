@@ -71,10 +71,11 @@ class FakeMergeStep:
 class FakeSplitStep:
     @workflows.workflow.entrypoint
     async def run(self, input: PdfSplitInput) -> dict[str, Any]:
-        # Deterministic stand-in for the LLM plan: "Brief ..." targets count as
-        # confidently splittable, everything else as no_split.
+        # Deterministic stand-in for the LLM plan: the "SINGLE" scan
+        # (Scan0009.pdf, content-based decision) counts as confidently
+        # splittable, everything else as no_split.
         base = input.target_path.rsplit("/", 1)[-1]
-        action = "split" if base.startswith("2026-11-19") else "no_split"
+        action = "split" if base.startswith("Scan0009") else "no_split"
         return {
             "target": input.target_path,
             "applied": input.apply_changes and action == "split",
@@ -331,9 +332,7 @@ FRONT_BACK_NO = {
 }
 
 
-async def test_pair_merged_to_scan_merged_n_then_named_and_split(
-    temporal_env, tmp_path
-):
+async def test_pair_merged_then_split_before_naming(temporal_env, tmp_path):
     scans = [
         _file("Scan.pdf", -1, size=1000, page_count=2, text=PAIR_FRONT),
         _file("Scan0007.pdf", 7, size=1100, page_count=2, text=PAIR_BACK),
@@ -369,21 +368,30 @@ async def test_pair_merged_to_scan_merged_n_then_named_and_split(
     assert merge["action"] == "merged"
     assert merge["to"] == "SCANNER_INBOX/ScanMerged0007.pdf"
 
-    # naming: merged pair and single renamed to YYYY-MM-DD title.pdf
-    renames = {c["from"]: c["to"] for c in calls if c["activity"] == "rename"}
-    assert renames["SCANNER_INBOX/ScanMerged0007.pdf"] == (
-        "SCANNER_INBOX/2026-11-18 Rechnung Beispielpraxis.pdf"
-    )
-    assert (
-        renames["SCANNER_INBOX/Scan0009.pdf"]
-        == "SCANNER_INBOX/2026-11-19 Brief Praxis.pdf"
-    )
-
-    # split ran per resulting file; the fake only splits the "Brief" target
+    # split ran per unit BEFORE naming, on the original paths; the fake only
+    # splits the "SINGLE" scan (Scan0009.pdf)
     splits = {s["target"]: s["action"] for s in by_step["split"]}
     assert splits == {
-        "SCANNER_INBOX/2026-11-18 Rechnung Beispielpraxis.pdf": "no_split",
-        "SCANNER_INBOX/2026-11-19 Brief Praxis.pdf": "split",
+        "SCANNER_INBOX/ScanMerged0007.pdf": "no_split",
+        "SCANNER_INBOX/Scan0009.pdf": "split",
+    }
+    steps_in_order = [a["step"] for a in result["actions"]]
+    assert steps_in_order.index("split") < steps_in_order.index("name")
+
+    # naming: only the unit that was NOT split is renamed; the split unit's
+    # parts are already named by the pdf-split step (named_by_split)
+    renames = {c["from"]: c["to"] for c in calls if c["activity"] == "rename"}
+    assert renames == {
+        "SCANNER_INBOX/ScanMerged0007.pdf": (
+            "SCANNER_INBOX/2026-11-18 Rechnung Beispielpraxis.pdf"
+        )
+    }
+    name_actions = {
+        a.get("path") or a.get("from"): a["action"] for a in by_step["name"]
+    }
+    assert name_actions == {
+        "SCANNER_INBOX/ScanMerged0007.pdf": "renamed",
+        "SCANNER_INBOX/Scan0009.pdf": "named_by_split",
     }
 
 
