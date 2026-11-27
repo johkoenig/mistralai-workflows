@@ -2,7 +2,7 @@
 
 # Workflow-Referenz
 
-Vollständige Referenz der vier Workflows des Deployments `mistralai-workflows`: Zweck, Start-Input, Ergebnisform und Beispiele. Das Deployment ist ein zweistufiges System: `pdf-scanner-processor` (Orchestrator) steuert die drei spezialisierten Step-Workflows `pdf-ocr`, `pdf-alternating-merge` und `pdf-split` als Child-Workflows an — jeder Step ist auch einzeln startbar. KI-generierte Namen, Titel und Rückfragen folgen der Sprache des Dokuments (entsprechende Anweisung in den Prompts). Konventionen und Architektur stehen in [ARCHITECTURE.md](ARCHITECTURE.de.md), Bedienung und Deployment-Betrieb in [README.md](README.de.md) und [OPERATIONS.md](OPERATIONS.de.md). Jeder Start-Input akzeptiert außerdem ein optionales Feld `connector`: der Name eines Datei-Connectors aus `FILE_CONNECTOR_NAMES` (leer = Default), damit ein Aufruf gezielt einen der konfigurierten Connector ansprechen kann.
+Vollständige Referenz der fünf Workflows des Deployments `mistralai-workflows`: Zweck, Start-Input, Ergebnisform und Beispiele. Das Deployment ist ein zweistufiges System: `pdf-scanner-processor` (Orchestrator) steuert die vier spezialisierten Step-Workflows `pdf-ocr`, `pdf-alternating-merge`, `pdf-split` und `pdf-vision` als Child-Workflows an — jeder Step ist auch einzeln startbar. KI-generierte Namen, Titel und Rückfragen folgen der Sprache des Dokuments (entsprechende Anweisung in den Prompts). Konventionen und Architektur stehen in [ARCHITECTURE.md](ARCHITECTURE.de.md), Bedienung und Deployment-Betrieb in [README.md](README.de.md) und [OPERATIONS.md](OPERATIONS.de.md). Jeder Start-Input akzeptiert außerdem ein optionales Feld `connector`: der Name eines Datei-Connectors aus `FILE_CONNECTOR_NAMES` (leer = Default), damit ein Aufruf gezielt einen der konfigurierten Connector ansprechen kann.
 
 Alle Workflows:
 
@@ -15,7 +15,7 @@ Alle Workflows:
 
 ## Ergebnis- und Action-Glossar
 
-Jedes Laufergebnis enthält oben `applied` (true = geschrieben, false = nur geplant/gelesen). Sammel-Workflows melden eine `actions`-Liste, Ein-Datei-Workflows ein einzelnes `action`-Feld. Die `actions`-Einträge des Orchestrators tragen zusätzlich ein `step`-Feld (`backup`, `ocr`, `front-back`, `merge`, `name`, `split`). Einheitliches Action-Vokabular:
+Jedes Laufergebnis enthält oben `applied` (true = geschrieben, false = nur geplant/gelesen). Sammel-Workflows melden eine `actions`-Liste, Ein-Datei-Workflows ein einzelnes `action`-Feld. Die `actions`-Einträge des Orchestrators tragen zusätzlich ein `step`-Feld (`backup`, `ocr`, `vision`, `front-back`, `merge`, `name`, `split`). Einheitliches Action-Vokabular:
 
 | Action | Bedeutung | Workflow |
 |---|---|---|
@@ -27,6 +27,7 @@ Jedes Laufergebnis enthält oben `applied` (true = geschrieben, false = nur gepl
 | `deferred` | Dry-Run: gemischte Datei ist nur geplant, Split käme nach einem echten Merge | Orchestrator (Step `split`) |
 | `replaced` | PDF wurde (per OCR) ersetzt | ocr |
 | `skipped` | Datei übersprungen (Textebene vorhanden, `force` nicht gesetzt; Backup-Datei) | ocr |
+| `vision_pass` | Vision-OCR-Fallback lief (Sidecar-txt + PDF-Metadaten-Flag, Textebene unangetastet) | vision (auch Orchestrator-Step `vision`) |
 | `split` | PDF wurde aufgeteilt | split |
 | `no_split` | alles ein zusammenhängendes Dokument, kein Split | split |
 | `clarification` | unsicher, Rückfrage mit `question` und `proposal`, nichts geschrieben | split |
@@ -34,19 +35,19 @@ Jedes Laufergebnis enthält oben `applied` (true = geschrieben, false = nur gepl
 
 ## pdf-scanner-processor
 
-Orchestrator über einen Scanner-Eingangsordner (nur erste Ordnerebene): OCR, Vorder-/Rückseiten-Erkennung + alternierendes Mischen, LLM-Benennung und bei sicherer Erkennung ein Split pro Datei — komplett durchgereicht, aufgebaut aus den Step-Workflows `pdf-ocr`, `pdf-alternating-merge` und `pdf-split` (als Child-Workflows mit deterministischen Ausführungs-IDs `{run}-{step}-{item}` aufgerufen).
+Orchestrator über einen Scanner-Eingangsordner (nur erste Ordnerebene): OCR, Vorder-/Rückseiten-Erkennung + alternierendes Mischen, LLM-Benennung und bei sicherer Erkennung ein Split pro Datei — komplett durchgereicht, aufgebaut aus den Step-Workflows `pdf-ocr`, `pdf-alternating-merge`, `pdf-split` und `pdf-vision` (als Child-Workflows mit deterministischen Ausführungs-IDs `{run}-{step}-{item}` aufgerufen).
 
 **Input**
 
 ```json
-{"folder_path": "/<Scanner-Eingang>", "apply_changes": true, "model": "mistral-small-latest", "connector": "", "merge_front_back": true, "split_parts": true, "ocr_languages": "deu+eng"}
+{"folder_path": "/<Scanner-Eingang>", "apply_changes": true, "model": "mistral-small-latest", "connector": "", "merge_front_back": true, "split_parts": true, "vision_fallback": true, "vision_model": "", "ocr_languages": "deu+eng"}
 ```
 
 - `folder_path`: Scanner-Eingang; fehlt er, gilt das Workspace-Secret `SCAN_INBOX_FOLDER` (Umgebungsvariable im Deployment).
 - `model`: LLM für die Prüfungen und die Benennung.
-- `merge_front_back: false` überspringt Paar-Erkennung/Mischen, `split_parts: false` überspringt den Split-Step. `ocr_languages` setzt die OCR-Sprachen für den pdf-ocr-Child (Default `deu+eng`; Scanner-Eingangs-Läufe können `deu` setzen und so die OCR-Zeit etwa halbieren) — die Benennung läuft dann direkt auf jede Einheit.
+- `merge_front_back: false` überspringt Paar-Erkennung/Mischen, `split_parts: false` überspringt den Split-Step `vision_fallback: false` überspringt den Vision-Fallback (Schritt 2.5), `vision_model` überschreibt die Umgebungsvariable `PDF_VISION_MODEL`. `ocr_languages` setzt die OCR-Sprachen für den pdf-ocr-Child (Default `deu+eng`; Scanner-Eingangs-Läufe können `deu` setzen und so die OCR-Zeit etwa halbieren) — die Benennung läuft dann direkt auf jede Einheit.
 
-**Ablauf**: `Scan.pdf` / `ScanNNNN.pdf` finden → Kopie jedes Roh-Scans unter `.originals/pdf-scanner-processor/` parken → Child `pdf-ocr` auf den Ordner (`with_pages_text=true`; eigene Backups unter `.originals/pdf-ocr/`; das Ergebnis trägt pro Datei Seitenzahl, `has_text`, Textausschnitt, seitenweise Texte und das `ocr_quality`-Flag (`low_confidence` bei schwachem OCR), es wird also nichts erneut heruntergeladen) → Kandidaten für Vorder-/Rückseiten-Paare (aufeinanderfolgende Scan-Reihenfolge, gleiche Seitenzahl, Größenfaktor 0.5-2.0, beide mit Textebene) per LLM-Activity `front-back-check` bestätigen (Annahme ab confidence >= 0.7; die Prüfung ist namensunabhängig, Vorder- und Rückseite dürfen also völlig anders aussehen) → Child `pdf-alternating-merge` pro bestätigtem Paar mit dem Zwischen-Titel `ScanMerged<N>.pdf` (N = größere Scan-Nummer des Paares; Quellen archiviert unter `.originals/pdf-alternating-merge/<Ziel>/`) → Split-Planung INLINE pro Einheit über die Activity `plan-split` (VOR der Benennung; inhaltsbasiert, Teile werden aus dem Plan benannt) — der `pdf-split`-Child wird nur bei tatsächlich bestätigtem Split gestartet, dann mit festem `split_at` + `titles` → jede nicht gesplittete Einheit benennen (`name-document` mit den nächstliegenden AGENTS.md-Regeln — Eingangsordner oder ein Elternordner; gemischte Paare über den kombinierten Text; Split-Teile werden als `named_by_split` reported) → nur bei sicherer Erkennung (>= 0.7) umbenennen, sonst `left_unchanged`.
+**Ablauf**: `Scan.pdf` / `ScanNNNN.pdf` finden → Kopie jedes Roh-Scans unter `.originals/pdf-scanner-processor/` parken → Child `pdf-ocr` auf den Ordner (`with_pages_text=true`; eigene Backups unter `.originals/pdf-ocr/`; das Ergebnis trägt pro Datei Seitenzahl, `has_text`, Textausschnitt, seitenweise Texte und das `ocr_quality`-Flag (`low_confidence` bei schwachem OCR), es wird also nichts erneut heruntergeladen) → Vision-Fallback für `low_confidence`-OCR-Ergebnisse via Child `pdf-vision` (Schritt 2.5; Vision-Text fließt nur in Erkennung/Split/Benennung ein, nie in die PDF-Textebene) → Kandidaten für Vorder-/Rückseiten-Paare (aufeinanderfolgende Scan-Reihenfolge, gleiche Seitenzahl, Größenfaktor 0.5-2.0, beide mit Textebene) per LLM-Activity `front-back-check` bestätigen (Annahme ab confidence >= 0.7; die Prüfung ist namensunabhängig, Vorder- und Rückseite dürfen also völlig anders aussehen) → Child `pdf-alternating-merge` pro bestätigtem Paar mit dem Zwischen-Titel `ScanMerged<N>.pdf` (N = größere Scan-Nummer des Paares; Quellen archiviert unter `.originals/pdf-alternating-merge/<Ziel>/`) → Split-Planung INLINE pro Einheit über die Activity `plan-split` (VOR der Benennung; inhaltsbasiert, Teile werden aus dem Plan benannt) — der `pdf-split`-Child wird nur bei tatsächlich bestätigtem Split gestartet, dann mit festem `split_at` + `titles` → jede nicht gesplittete Einheit benennen (`name-document` mit den nächstliegenden AGENTS.md-Regeln — Eingangsordner oder ein Elternordner; gemischte Paare über den kombinierten Text; Split-Teile werden als `named_by_split` reported) → nur bei sicherer Erkennung (>= 0.7) umbenennen, sonst `left_unchanged`.
 
 **Ergebnis**: `{folder, applied, actions[]}`; jeder Eintrag trägt `step` (`backup` / `ocr` / `front-back` / `merge` / `name` / `split`) plus die step-spezifischen Felder (`files`, `action`, `to`, `backup`, `confidence`, `result`, ...).
 
@@ -104,3 +105,21 @@ Heuristiken der AI-Planung (im Split-Prompt): Ein NEUES Dokument wird angenommen
 AI-benannte Teile heißen `<Titel>.pdf` (kein Stamm-Präfix), benannt nach den nächstliegenden AGENTS.md-Regeln.
 
 **Ergebnis**: `{target, applied, action, pages, parts[], original?}`; `action` aus `planned` / `split` / `no_split` / `clarification` / `error`, `parts` mit `pages` (z. B. `"1-2"`), `count`, `to`.
+
+## pdf-vision
+
+Vision-OCR-Fallback für gescannte PDFs (Roadmap G): rendert Seiten (pypdfium2, max. Kante 1540 px) und liest sie mit einem vision-fähigen Chat-Modell (base64-PNG-Teile, max. 8 Bilder pro Request). Der Vision-Text fließt in Duplex-Erkennung, Split-Planung und Benennung im Orchestrator ein - die durchsuchbare Textebene der PDF wird nie ersetzt.
+
+**Input**
+
+```json
+{"target_path": "/Ordner", "recursive": false, "pages": null, "force": false, "apply_changes": true, "model": "", "languages": "deu+eng", "connector": ""}
+```
+
+- `pages`: explizite 1-basierte Seitenzahlen; leer = bei `force=true` alle Seiten, sonst nur Dateien mit `low_confidence` laut OCR-Quality-Heuristik (assess-ocr-quality). Pro Datei gedeckelt durch `MAX_VISION_PAGES` (Default 8).
+- `model`: leer = Umgebungsvariable `PDF_VISION_MODEL` (Default `mistral-small-latest`, vision-fähig).
+- `apply_changes=false` (Dry-Run) plant alles und schreibt nichts.
+
+**Ergebnis-Speicherung** (`apply_changes=true`): Sidecar `<Name>.txt` neben der PDF (nie überschreiben - Kollision bekommt `_2`-Suffix) plus Verarbeitungs-Flag in den PDF-Metadaten (`/VisionOcrPass`: Modell, Confidence, Datum, Seiten); die Textebene bleibt unangetastet.
+
+**Ergebnis**: `{target, kind, applied, actions[]}`; `action` pro Datei aus `vision_pass` / `planned` / `skipped` / `error`, mit `pages`, `model`, `confidence`, `low_confidence`, `text`, `sidecar`.

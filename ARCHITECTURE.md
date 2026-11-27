@@ -11,7 +11,7 @@ This file records conventions and the division of work.
 
 ## Division of work
 
-Two levels: three single-purpose step workflows in `workflows/steps/` and one
+Two levels: four single-purpose step workflows in `workflows/steps/` and one
 orchestrator in `workflows/` that calls them as child workflows.
 
 | Workflow | Task | Trigger |
@@ -20,6 +20,7 @@ orchestrator in `workflows/` that calls them as child workflows.
 | pdf-ocr | process PDFs without a text layer (one file, one folder, optionally recursive) | manual or child of pdf-scanner-processor |
 | pdf-alternating-merge | interleave duplex pairs alternately (pairs input or control file) | manual or child of pdf-scanner-processor |
 | pdf-split | split a PDF into parts (explicit split points or LLM planning with a follow-up question), original moved to .originals/pdf-split/ | manual or child of pdf-scanner-processor |
+| pdf-vision | vision OCR fallback for low-confidence OCR results; sidecar <name>.txt + metadata flag, never replaces the text layer | manual or child of pdf-scanner-processor (step 2.5) |
 
 ## Trigger philosophy
 

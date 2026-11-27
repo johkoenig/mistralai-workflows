@@ -4,7 +4,7 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/johkoenig/mistralai-workflows/ci.yml?branch=main&label=CI)](https://github.com/johkoenig/mistralai-workflows/actions/workflows/ci.yml)
 
-One repository, one managed deployment in your Mistral workspace, four workflows that run on your documents **in your own storage**. The deployment has two levels: one **orchestrator** drives the whole scan-inbox process end to end and calls the three single-purpose **steps** as child workflows — each step can also be started on its own. Nothing leaves the connected storage except the OCR/naming prompts sent to the Mistral API.
+One repository, one managed deployment in your Mistral workspace, five workflows that run on your documents **in your own storage**. The deployment has two levels: one **orchestrator** drives the whole scan-inbox process end to end and calls the four single-purpose **steps** as child workflows — each step can also be started on its own. Nothing leaves the connected storage except the OCR/naming prompts sent to the Mistral API.
 
 ## Workflows
 
@@ -21,8 +21,9 @@ One repository, one managed deployment in your Mistral workspace, four workflows
 | `pdf-ocr` | OCR for a single PDF or a whole folder (optionally recursive) |
 | `pdf-alternating-merge` | Merges duplex pairs (front/back pages interleaved) via a JSON control file or a direct `pairs` start input |
 | `pdf-split` | Splits a PDF at given page numbers or LLM-planned split points (asks back when unsure) |
+| `pdf-vision` | Vision OCR fallback for weak OCR results (sidecar `.txt` + PDF metadata flag; text layer untouched) |
 
-All four are started **manually** (Studio, chat, or MCP `execute_workflow`) — never by schedule or webhook, so a run can never tear apart an incomplete scan job.
+All five are started **manually** (Studio, chat, or MCP `execute_workflow`) — never by schedule or webhook, so a run can never tear apart an incomplete scan job.
 
 ## Quick start
 
@@ -39,6 +40,7 @@ All four are started **manually** (Studio, chat, or MCP `execute_workflow`) — 
 | `merge_front_back` | Orchestrator: detect and merge front/back pairs | `true` |
 | `split_parts` | Orchestrator: run the split step on every unit before naming | `true` |
 | `ocr_languages` | Orchestrator: OCR languages for the pdf-ocr child (scanner inbox: `deu`) | `deu+eng` |
+| `vision_fallback` / `vision_model` | Orchestrator: route low-confidence OCR results through `pdf-vision`; model override (`PDF_VISION_MODEL` env default) | `true` / `""` |
 | `apply_changes` | `false` = dry run: everything is read, OCRed and planned, nothing is written | `true` |
 | `model` | LLM for naming, planning and the front/back check | `mistral-small-latest` |
 | `connector` | File connector from `FILE_CONNECTOR_NAMES` that this call should target | default connector |
@@ -51,7 +53,7 @@ Built into the project (code and base prompt):
 
 - The project itself defines **no file name schema** — names are chosen by the LLM. The project only sanitizes names technically (ASCII, umlauts transliterated, max. 80 characters) and never overwrites files (collisions get `_2`, `_3`, ...). Merged front/back pairs first get the intermediate name `ScanMerged<N>.pdf` (N = larger scan number of the pair) and are renamed to the final name afterwards.
 - The LLM names and asks in the language of the document.
-- **Originals are always backed up** under `<folder>/.originals/<workflow>/` — on by default in all four workflows (merge uses a subfolder per target; the others park the file directly). The workflows never delete anything; clean up `.originals/` by hand once you have verified the results.
+- **Originals are always backed up** under `<folder>/.originals/<workflow>/` — on by default in all five workflows (merge uses a subfolder per target; the others park the file directly). The workflows never delete anything; clean up `.originals/` by hand once you have verified the results.
 - OCR, download and upload activities send heartbeats: a crashed worker is detected within ~2 minutes and the activity is retried automatically.
 
 Naming conventions come from your `AGENTS.md` — **not part of this repository**:

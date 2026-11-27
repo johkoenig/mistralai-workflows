@@ -8,6 +8,7 @@ so naming behavior and the merge algorithm exist exactly once.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     from mistralai.client.models import (
         AssistantMessage,
         ChatCompletionRequestMessageTypedDict,
+        ContentChunkTypedDict,
     )
 
 
@@ -80,6 +82,14 @@ MAX_CONCURRENT_OCR = int(os.environ.get("MAX_CONCURRENT_OCR", "2"))
 # low_confidence in the run report (env-configurable like MAX_CONCURRENT_OCR).
 OCR_EMPTY_PAGE_CHARS = 20
 OCR_QUALITY_MIN_CONFIDENCE = float(os.environ.get("OCR_QUALITY_MIN_CONFIDENCE", "0.6"))
+# Vision fallback knobs (roadmap G): model, quality threshold, page cap.
+PDF_VISION_MODEL = os.environ.get("PDF_VISION_MODEL", "mistral-small-latest")
+PDF_VISION_THRESHOLD = float(os.environ.get("PDF_VISION_THRESHOLD", "0.6"))
+MAX_VISION_PAGES = int(os.environ.get("MAX_VISION_PAGES", "8"))
+# Vision API: max images per chat request (API limit), max render edge in px
+# (vision models downscale to ~1540x1540 anyway).
+VISION_MAX_IMAGES_PER_REQUEST = 8
+VISION_MAX_RENDER_PX = 1540
 # Folder-specific naming rules (AGENTS.md): maximum number of characters loaded.
 NAMING_RULES_MAX_CHARS = 4000
 # Uniform storage location for secured originals of all workflows.
@@ -820,3 +830,103 @@ def ocr_quality_metrics(pages: list[str]) -> dict[str, Any]:
 async def assess_ocr_quality(pages: list[str]) -> dict[str, Any]:
     """Activity wrapper around the pure ocr_quality_metrics heuristic."""
     return ocr_quality_metrics(pages)
+
+
+VISION_OCR_SYSTEM_PROMPT = (
+    "You receive the rendered page images of a scanned PDF (page numbers are "
+    "given). Transcribe the visible text of every page exactly, in the "
+    "language of the document. Do not describe the images, do not invent "
+    "content; empty pages stay empty. Answer with JSON only: "
+    '{"pages": {"<page number as string>": "<transcribed text>"}}.'
+)
+
+
+@workflows.activity(
+    name="vision-ocr-pass",
+    start_to_close_timeout=timedelta(minutes=15),
+    heartbeat_timeout=timedelta(minutes=2),
+    retry_policy_max_attempts=2,
+)
+async def vision_ocr_pass(
+    pdf_path: str, pages: list[int], model: str = ""
+) -> dict[str, Any]:
+    """Vision fallback (roadmap G): renders and reads pages with a vision model.
+
+    Renders the given pages of a local PDF and reads them with a
+    vision-capable chat model (base64 image parts, at most
+    VISION_MAX_IMAGES_PER_REQUEST images per request). Returns the per-page
+    transcribed text plus a quality estimate of the vision text. Never writes
+    anything - the caller stores the result (sidecar txt / metadata flag).
+    """
+    from worker.ocr import render_pdf_pages
+
+    model = model or PDF_VISION_MODEL
+    pages = [p for p in pages if p >= 1][:MAX_VISION_PAGES]
+    if not pages:
+        return {
+            "pages_text": {},
+            "text": "",
+            "model": model,
+            "confidence": 0.0,
+            "error": "no pages",
+        }
+    renders = await asyncio.to_thread(
+        render_pdf_pages, pdf_path, pages, VISION_MAX_RENDER_PX
+    )
+    client = get_mistral_client()
+    pages_text: dict[str, str] = {}
+    for start in range(0, len(pages), VISION_MAX_IMAGES_PER_REQUEST):
+        batch = pages[start : start + VISION_MAX_IMAGES_PER_REQUEST]
+        content: list[ContentChunkTypedDict] = [
+            {
+                "type": "text",
+                "text": "Transcribe these PDF pages. Page numbers: "
+                + ", ".join(str(p) for p in batch),
+            }
+        ]
+        for page in batch:
+            png = renders.get(page)
+            if png is None:
+                continue
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": "data:image/png;base64,"
+                    + base64.b64encode(png).decode("ascii"),
+                }
+            )
+        messages: list[ChatCompletionRequestMessageTypedDict] = [
+            {"role": "system", "content": VISION_OCR_SYSTEM_PROMPT},
+            {"role": "user", "content": content},
+        ]
+        response = client.chat.complete(
+            model=model,
+            messages=messages,
+            response_format={"type": "json_object"},
+            temperature=0.0,
+            top_p=1,
+        )
+        message = cast("AssistantMessage", response.choices[0].message).content
+        try:
+            data: Any = json.loads(message) if isinstance(message, str) else message
+            for key, value in (data.get("pages") or {}).items():
+                pages_text[str(key)] = str(value or "")
+        except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
+            return {
+                "pages_text": pages_text,
+                "text": "",
+                "model": model,
+                "confidence": 0.0,
+                "error": "vision model returned no JSON",
+            }
+    ordered = [pages_text.get(str(p), "") for p in pages]
+    quality = ocr_quality_metrics(ordered)
+    return {
+        "pages_text": {str(p): t for p, t in zip(pages, ordered, strict=True)},
+        "text": "\n\n".join(ordered),
+        "model": model,
+        "confidence": quality["confidence"],
+        "low_confidence": quality["low_confidence"]
+        or quality["confidence"] < PDF_VISION_THRESHOLD,
+        "pages": pages,
+    }
