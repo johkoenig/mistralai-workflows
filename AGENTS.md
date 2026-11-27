@@ -54,7 +54,7 @@ Run them locally before pushing. A red local run does not become a PR.
 
 - Any new or changed workflow behavior: update `WORKFLOWS.md` **and** `WORKFLOWS.de.md` in the same PR.
 - New activities, start inputs, states or vocabulary: follow the `ARCHITECTURE.md` vocabulary from the consistency run (PR #15) and update both language versions.
-- Every PR adds an entry to `CHANGELOG.md` and `CHANGELOG.de.md`, following the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format (versioned sections, `Added`/`Changed`/`Removed`/`Fixed` subsections, link definitions at the bottom).
+- Every content PR (`feat`, `fix`, user-facing `docs`) adds its entry to `CHANGELOG.md` and `CHANGELOG.de.md` under `Unreleased`, in the same PR. The Unreleased section always carries the six Keep a Changelog categories (`Added`/`Changed`/`Deprecated`/`Removed`/`Fixed`/`Security`), empty ones included. Purely technical PRs (CI, dependency bumps, non-behavioral refactoring) add no entry. Entries are **one-liners**; the pull request is linked manually in parentheses at the end, e.g. `([#24](https://github.com/johkoenig/mistralai-workflows/pull/24))`. Context and details belong in the PR description, not in the changelog.
 - Operational procedures change: update `OPERATIONS.md` and `OPERATIONS.de.md`.
 - English files are the source of truth; the `.de` mirror is updated in the same commit, not later.
 
@@ -64,3 +64,14 @@ Run them locally before pushing. A red local run does not become a PR.
 - Branch names: `<area>/<topic>` (`ci/`, `docs/`, `feat/`, `fix/`, `quality/`).
 - PR titles: `<area>: <summary>` (`ci:`, `docs:`, `feat:`, `fix:`, `quality:`).
 - The CI quality report lands as one comment per PR (replaced on every push). If a report-only step shows findings, the next commit addresses them; do not wave them through.
+
+## Releases and versioning
+
+- Trunk-based releases: `main` is always releasable. A release is an annotated tag on `main` (`vX.Y.Z`), never a release branch.
+- Changelog discipline: the Unreleased section in both changelogs always carries the six Keep a Changelog categories (**Added, Changed, Deprecated, Removed, Fixed, Security**); empty categories are expected and stay. Every content PR (`feat`, `fix`, user-facing `docs`) adds its entry under Unreleased **in the same PR**. Purely technical PRs (CI, dependency bumps, non-behavioral refactoring) add no entry. Content PRs never touch version numbers.
+- Changelog entries are **one-liners** (what changed, one sentence at most); the pull request is linked manually in parentheses at the end, e.g. `([#24](https://github.com/johkoenig/mistralai-workflows/pull/24))`. Longer rationale and context belong in the PR description.
+- The `Unreleased` headline carries **no link definition** (a compare link would need updating on every push); it is a plain `## Unreleased`. Link definitions exist only for released versions.
+- Release PR: when a milestone is complete, a dedicated PR does nothing but release — bump the version in all four member `pyproject.toml` files (`apps/worker`, `packages/py/utils`, `packages/py/cli`, `packages/py/env`), turn `## Unreleased` into `## [X.Y.Z] - YYYY-MM-DD` in both changelogs, **strip the empty categories** from the released section, and add the version's link definition pointing at the tag ref (`vX.Y.Z`). Feature content in a release PR is a rule violation.
+- After the release merge: push the annotated tag `vX.Y.Z` on the merge commit, then a single commit on `main` named "Bump to Next Version" re-creates an empty Unreleased section with all six categories.
+- Version numbers carry **no dev/snapshot suffix** between releases: `main` reports the last released version, the Unreleased section reports what changed since. If CI artifacts from `main` ever need distinguishing, use PEP 440 `X.Y.Z.dev0` — decide when that case exists.
+- Hotfix exception: an urgent fix for the running release branches off its tag (`hotfix/X.Y.(Z+1)` from `vX.Y.Z`), gets its own patch tag after the fix, and merges back into `main`.
