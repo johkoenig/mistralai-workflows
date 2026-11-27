@@ -13,10 +13,10 @@ workflows in workflows/steps/ - each step is also directly triggerable on its ow
 1. Find new scans "Scan.pdf" / "ScanNNNN.pdf" and park a copy of each raw scan
    under <folder>/.originals/pdf-scanner-processor/ (before anything modifies it).
 2. Step pdf-ocr on the whole folder (with_pages_text=true): PDFs without a
-   text layer get OCR (Tesseract deu+eng, deskew, page rotation); the result
-   replaces the file in Nextcloud (the step secures its own backup under
-   .originals/pdf-ocr/). The step returns per file page count, has_text and
-   text snippets, so step 3 needs no second download.
+   text layer get OCR (Tesseract, deskew, page rotation); the result replaces
+   the file in Nextcloud (the step secures its own backup under
+   .originals/pdf-ocr/). The step returns per file page count, has_text, text
+   snippets and an OCR quality flag, so step 3 needs no second download.
 3. Detect front/back pairs from the OCR metadata (analyze-scan-file only as
    fallback for uncovered files): structural prefilter (consecutive scan
    order, same page count, size ratio 0.5-2.0, both with text), then the LLM
@@ -352,6 +352,9 @@ class PdfScannerProcessorWorkflow:
                     "has_text": action["has_text"],
                     "text": action["text"],
                     "pages_text": action.get("pages_text") or [action["text"]],
+                    "low_confidence": bool(
+                        (action.get("ocr_quality") or {}).get("low_confidence", False)
+                    ),
                 }
             async with semaphore:
                 return await analyze_scan_file(scan, connector)
@@ -405,6 +408,7 @@ class PdfScannerProcessorWorkflow:
                 "text": item["text"],
                 "page_count": item.get("page_count", 0),
                 "pages_text": item.get("pages_text") or [item.get("text", "")],
+                "low_confidence": item.get("low_confidence", False),
             }
             for item in analyzed
             if item["path"] not in paired_paths

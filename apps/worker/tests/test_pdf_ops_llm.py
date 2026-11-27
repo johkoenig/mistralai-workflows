@@ -214,3 +214,28 @@ def test_max_concurrent_ocr_env_override():
     )
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == "2"
+
+
+def test_ocr_quality_metrics_real_text_is_confident():
+    pages = [
+        "Rechnung Nr. 4711 vom 18.11.2026 an Beispielpraxis GmbH, Musterweg 12, 88048 Friedrichshafen",
+        "Vielen Dank fuer Ihren Auftrag. Wir berechnen 24,93 EUR brutto inkl. 19 Prozent Mehrwertsteuer.",
+    ]
+    result = pdf_ops.ocr_quality_metrics(pages)
+    assert result["low_confidence"] is False
+    assert result["confidence"] >= pdf_ops.OCR_QUALITY_MIN_CONFIDENCE
+    assert result["metrics"]["empty_pages"] == 0
+
+
+def test_ocr_quality_metrics_garbage_is_low_confidence():
+    garbage = ["x x x x x % & / ( ) = ?", "", "  ", "wwwwwwwwwwwwwwwwwwwwwwwwwwww"]
+    result = pdf_ops.ocr_quality_metrics(garbage)
+    assert result["low_confidence"] is True
+    assert result["confidence"] < pdf_ops.OCR_QUALITY_MIN_CONFIDENCE
+    assert result["metrics"]["empty_pages"] == 2
+
+
+def test_ocr_quality_metrics_empty_document():
+    result = pdf_ops.ocr_quality_metrics(["", ""])
+    assert result["low_confidence"] is True
+    assert result["metrics"]["empty_pages"] == 2

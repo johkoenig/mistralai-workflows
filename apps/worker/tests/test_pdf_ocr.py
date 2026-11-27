@@ -157,7 +157,11 @@ def _make_fakes(record_path: str, listing: dict, processed: dict[str, dict]) -> 
             report["pages_text"] = ["Beispieltext Seite"]
         return report
 
-    return [fake_list, fake_process]
+    @workflows.activity(name="assess-ocr-quality")
+    async def fake_assess(pages: list[str]) -> dict[str, Any]:
+        return {"confidence": 0.9, "low_confidence": False, "metrics": {}}
+
+    return [fake_list, fake_process, fake_assess]
 
 
 async def test_workflow_processes_folder_and_reports_originals_dir(

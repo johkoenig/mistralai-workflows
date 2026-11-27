@@ -75,6 +75,11 @@ MIN_NAMING_CONFIDENCE = 0.7
 # Configurable via environment (same pattern as SCAN_INBOX_FOLDER), e.g. 3-4 on
 # stronger hardware; the default 2 protects small instances from OOM.
 MAX_CONCURRENT_OCR = int(os.environ.get("MAX_CONCURRENT_OCR", "2"))
+# OCR quality heuristic (roadmap F): a page counts as empty below this many
+# non-space characters; files below OCR_QUALITY_MIN_CONFIDENCE are flagged
+# low_confidence in the run report (env-configurable like MAX_CONCURRENT_OCR).
+OCR_EMPTY_PAGE_CHARS = 20
+OCR_QUALITY_MIN_CONFIDENCE = float(os.environ.get("OCR_QUALITY_MIN_CONFIDENCE", "0.6"))
 # Folder-specific naming rules (AGENTS.md): maximum number of characters loaded.
 NAMING_RULES_MAX_CHARS = 4000
 # Uniform storage location for secured originals of all workflows.
@@ -752,3 +757,66 @@ async def load_naming_rules(folder: str, connector: str = "") -> dict[str, Any]:
             logger.info("naming rules loaded: %s (%d chars)", path, len(rules))
             return {"rules": rules, "source": path}
     return {"rules": "", "source": None}
+
+
+def ocr_quality_metrics(pages: list[str]) -> dict[str, Any]:
+    """Pure OCR-quality heuristic (roadmap F, no LLM, no vision).
+
+    Signals: empty pages, alphanumeric ratio of the non-space text, and the
+    word-length distribution (real words are typically 2-15 chars; OCR garbage
+    is a pile of 1-char or very long tokens). Returns metrics plus a
+    confidence in [0, 1] and the low_confidence flag.
+    """
+    page_count = max(1, len(pages))
+    empty_pages = sum(
+        1 for page in pages if len((page or "").strip()) < OCR_EMPTY_PAGE_CHARS
+    )
+    text = " ".join(page or "" for page in pages)
+    non_space = [ch for ch in text if not ch.isspace()]
+    alnum_ratio = (
+        sum(1 for ch in non_space if ch.isalnum()) / len(non_space)
+        if non_space
+        else 0.0
+    )
+    words = [w for w in re.split(r"\s+", text) if w]
+    vowels = set("aeiouyäöüAEIOUYÄÖÜ")
+    if words:
+        mean_len = sum(len(w) for w in words) / len(words)
+        # real words: 2-15 chars and contain a vowel; OCR garbage is mostly
+        # 1-char tokens or very long runs without vowels
+        reasonable = sum(
+            1 for w in words if 2 <= len(w) <= 15 and any(c in vowels for c in w)
+        )
+        word_score = reasonable / len(words)
+    else:
+        mean_len = 0.0
+        word_score = 0.0
+    empty_score = 1.0 - (empty_pages / page_count)
+    # alnum ratio ~0.75+ is normal for real text; mean word length 3-9 typical
+    alnum_score = min(1.0, alnum_ratio / 0.75)
+    len_score = min(1.0, max(0.0, (12.0 - mean_len) / 9.0)) if mean_len else 0.0
+    confidence = round(
+        0.30 * empty_score + 0.20 * alnum_score + 0.35 * word_score + 0.15 * len_score,
+        3,
+    )
+    return {
+        "confidence": max(0.0, min(1.0, confidence)),
+        "low_confidence": confidence < OCR_QUALITY_MIN_CONFIDENCE,
+        "metrics": {
+            "pages": page_count,
+            "empty_pages": empty_pages,
+            "alnum_ratio": round(alnum_ratio, 3),
+            "mean_word_length": round(mean_len, 2),
+            "reasonable_word_ratio": round(word_score, 3),
+        },
+    }
+
+
+@workflows.activity(
+    name="assess-ocr-quality",
+    start_to_close_timeout=timedelta(minutes=2),
+    retry_policy_max_attempts=2,
+)
+async def assess_ocr_quality(pages: list[str]) -> dict[str, Any]:
+    """Activity wrapper around the pure ocr_quality_metrics heuristic."""
+    return ocr_quality_metrics(pages)

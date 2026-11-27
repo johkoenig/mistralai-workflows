@@ -47,6 +47,10 @@ class FakeOcrStep:
                 "has_text": s["has_text"],
                 "text": s["text"],
                 "pages_text": [s["text"]],
+                "ocr_quality": {
+                    "confidence": 0.3 if s.get("low_confidence") else 0.95,
+                    "low_confidence": bool(s.get("low_confidence", False)),
+                },
             }
             for s in listing["scans"]
         ]
@@ -115,6 +119,7 @@ def _file(
     page_count: int = 1,
     text: str = "",
     has_text: bool = True,
+    low_confidence: bool = False,
 ) -> dict[str, Any]:
     return {
         "name": name,
@@ -125,6 +130,7 @@ def _file(
         "page_count": page_count,
         "has_text": has_text,
         "text": text,
+        "low_confidence": low_confidence,
     }
 
 
