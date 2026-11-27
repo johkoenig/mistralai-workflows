@@ -390,6 +390,39 @@ async def test_auto_mode_plans_and_splits(temporal_env, tmp_path, monkeypatch):
     assert calls[3]["titles"] == ["Erster", "Zweiter", "Dritter"]
 
 
+async def test_naming_rules_input_skips_load_and_wins(
+    temporal_env, tmp_path, monkeypatch
+):
+    # Caller-provided naming_rules (e.g. from the orchestrator) win; the
+    # workflow does not load the AGENTS.md itself in that case.
+    record_path = str(tmp_path / "calls.jsonl")
+    monkeypatch.setenv("SCANNER_TEST_CALLS", record_path)
+    split_result = {
+        "target": "/D/Scan.pdf",
+        "applied": True,
+        "action": "split",
+        "pages": 6,
+        "parts": [],
+        "original": "/D/.originals/pdf-split/Scan.pdf",
+    }
+    raw = await _run(
+        temporal_env,
+        record_path,
+        PdfSplitInput(
+            target_path="/D/Scan.pdf",
+            apply_changes=True,
+            naming_rules="VOM_ORCHESTRATOR",
+        ),
+        CONFIDENT_PLAN,
+        split_result,
+        rules="aus AGENTS.md",
+    )
+    assert raw == split_result
+    calls = _read_calls(record_path)
+    assert [c["activity"] for c in calls] == ["load", "plan", "split"]
+    assert calls[1]["rules"] == "VOM_ORCHESTRATOR"
+
+
 async def test_auto_mode_clarification_blocks(temporal_env, tmp_path, monkeypatch):
     record_path = str(tmp_path / "calls.jsonl")
     monkeypatch.setenv("SCANNER_TEST_CALLS", record_path)

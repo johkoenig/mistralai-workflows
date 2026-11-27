@@ -111,6 +111,10 @@ class PdfAlternatingMergeInput(pydantic.BaseModel):
     apply_changes: bool = True
     model: str = "mistral-small-latest"
     connector: str = ""
+    naming_rules: str = ""
+    """Naming rules passed by a caller (e.g. the pdf-scanner-processor
+    orchestrator, which already loaded the nearest AGENTS.md). When empty, the
+    workflow loads the nearest AGENTS.md itself as before (standalone use)."""
 
 
 def entry_error(entry: Any) -> str | None:
@@ -412,7 +416,10 @@ class PdfAlternatingMergeWorkflow:
                 if isinstance(title, str) and title.strip():
                     naming = {"date": None, "title": title.strip(), "confidence": 1.0}
                 elif infos["has_text"]:
-                    rules = (await load_naming_rules(folder, connector))["rules"]
+                    if input.naming_rules.strip():
+                        rules = input.naming_rules
+                    else:
+                        rules = (await load_naming_rules(folder, connector))["rules"]
                     naming = await name_document(
                         infos["combined_text"], input.model, rules
                     )
