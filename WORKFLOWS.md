@@ -106,7 +106,7 @@ AI-named parts are called `<title>.pdf` (no stem prefix), named by the nearest A
 
 ## pdf-vision
 
-Vision OCR fallback for scanned PDFs (roadmap G): renders pages (pypdfium2, max edge 1540 px) and reads them with a vision-capable chat model (base64 PNG parts, max 8 images per request). The vision text feeds duplex detection, split planning and naming in the orchestrator - it never replaces the PDF's searchable text layer.
+Vision OCR fallback for scanned PDFs: renders pages (pypdfium2, max edge 1540 px) and reads them with a vision-capable chat model (base64 PNG parts, max 8 images per request). The vision text feeds duplex detection, split planning and naming in the orchestrator - it never replaces the PDF's searchable text layer.
 
 **Input**
 

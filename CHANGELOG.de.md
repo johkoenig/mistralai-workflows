@@ -8,7 +8,7 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), und d
 
 Einträge sind Einzeiler; der Pull-Request ist am Ende in Klammern manuell verlinkt. `Unreleased` trägt keine Link-Definition (die müsste bei jedem Push aktualisiert werden); freigegebene Versionen verlinken über die Definitionen am Dateiende auf Tag oder PR.
 
-## Unreleased
+## [0.4.0] - 2026-11-27
 
 ### Added
 
@@ -17,14 +17,6 @@ Einträge sind Einzeiler; der Pull-Request ist am Ende in Klammern manuell verli
 ### Changed
 
 - `pdf-ocr`-Ergebnisse tragen jetzt `ocr_quality` (`confidence` / `low_confidence` / `metrics`) aus der neuen Heuristik `assess-ocr-quality`; der Orchestrator markiert schwache OCR-Ergebnisse im Run-Report als `low_confidence` (Umgebungsvariable `OCR_QUALITY_MIN_CONFIDENCE`, Default `0.6`). ([#40](https://github.com/johkoenig/mistralai-workflows/pull/40))
-
-### Deprecated
-
-### Removed
-
-### Fixed
-
-### Security
 
 ## [0.3.0] - 2026-11-27
 
@@ -88,6 +80,7 @@ Erstes öffentliches Release von `mistralai-workflows` — Mistral-Workflows fü
 
 Die Git-Historie wurde bei der Neuerstellung des Repositories für die Veröffentlichung auf einen Commit squasht; frühere PR-Referenzen lösen nicht mehr auf.
 
+[0.4.0]: https://github.com/johkoenig/mistralai-workflows/releases/tag/v0.4.0
 [0.3.0]: https://github.com/johkoenig/mistralai-workflows/releases/tag/v0.3.0
 [0.2.1]: https://github.com/johkoenig/mistralai-workflows/pull/27
 [0.2.0]: https://github.com/johkoenig/mistralai-workflows/compare/a2db23a...d2e3984

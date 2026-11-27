@@ -108,7 +108,7 @@ AI-benannte Teile heißen `<Titel>.pdf` (kein Stamm-Präfix), benannt nach den n
 
 ## pdf-vision
 
-Vision-OCR-Fallback für gescannte PDFs (Roadmap G): rendert Seiten (pypdfium2, max. Kante 1540 px) und liest sie mit einem vision-fähigen Chat-Modell (base64-PNG-Teile, max. 8 Bilder pro Request). Der Vision-Text fließt in Duplex-Erkennung, Split-Planung und Benennung im Orchestrator ein - die durchsuchbare Textebene der PDF wird nie ersetzt.
+Vision-OCR-Fallback für gescannte PDFs: rendert Seiten (pypdfium2, max. Kante 1540 px) und liest sie mit einem vision-fähigen Chat-Modell (base64-PNG-Teile, max. 8 Bilder pro Request). Der Vision-Text fließt in Duplex-Erkennung, Split-Planung und Benennung im Orchestrator ein - die durchsuchbare Textebene der PDF wird nie ersetzt.
 
 **Input**
 
