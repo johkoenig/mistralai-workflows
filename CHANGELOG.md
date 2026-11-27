@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 Entries are one-liners; the pull request is linked manually in parentheses at the end. `Unreleased` carries no link definition (it would need updating on every push); released versions link to their tag or PR via the definitions at the bottom.
 
+## Unreleased
+
+### Added
+
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Security
+
 ## [0.3.0] - 2026-11-27
 
 ### Changed
