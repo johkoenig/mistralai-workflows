@@ -20,6 +20,8 @@ Einträge sind Einzeiler; der Pull-Request ist am Ende in Klammern manuell verli
 
 ### Fixed
 
+- `pdf-vision` läuft jetzt mit `on_behalf_of=True` wie alle anderen Workflows; ohne OBO schlug die Connector-Auflösung auf dem Managed Deployment mit 404 fehl. ([#42](https://github.com/johkoenig/mistralai-workflows/pull/42))
+
 ### Security
 
 ## [0.4.0] - 2026-11-27

@@ -20,6 +20,8 @@ Entries are one-liners; the pull request is linked manually in parentheses at th
 
 ### Fixed
 
+- `pdf-vision` now runs `on_behalf_of=True` like all other workflows; without it the connector resolve failed with 404 on the managed deployment. ([#42](https://github.com/johkoenig/mistralai-workflows/pull/42))
+
 ### Security
 
 ## [0.4.0] - 2026-11-27
