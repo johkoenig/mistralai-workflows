@@ -50,6 +50,8 @@ from worker.pdf_ops import (
     FILE_CONNECTOR_NAMES,
     MAX_CONCURRENT_OCR,
     ORIGINALS_DIR_NAME,
+    SPLIT_TEXT_PER_PAGE,
+    TEXT_SNIPPET_CHARS,
     ensure_folder,
     file_client,
     file_connectors,
@@ -63,6 +65,7 @@ from worker.pdf_ops import (
 )
 
 MAX_FILES_PER_RUN = 200
+MAX_PAGES_TEXT = 100  # cap for the per-page text snippets (with_pages_text)
 HEARTBEAT_TIMEOUT = timedelta(seconds=120)
 
 logger = logging.getLogger("worker.pdf_ocr")
@@ -78,6 +81,10 @@ class PdfOcrInput(pydantic.BaseModel):
     apply_changes: bool = True
     languages: str = OCR_LANGUAGES
     connector: str = ""
+    with_pages_text: bool = False
+    """When true, every result action also carries has_text, a text snippet and
+    pages_text (per page, capped) so pipeline callers (pdf-scanner-processor)
+    need no second download. Off by default to keep folder-run results small."""
 
 
 def is_pdf_name(name: str) -> bool:
@@ -159,6 +166,19 @@ async def list_targets(
     }
 
 
+def _text_metadata(info: dict[str, Any], with_pages_text: bool) -> dict[str, Any]:
+    """has_text + text snippet (+ per-page snippets) for the result action."""
+    meta: dict[str, Any] = {
+        "has_text": info["has_text"],
+        "text": "\n".join(info["pages"])[:TEXT_SNIPPET_CHARS],
+    }
+    if with_pages_text:
+        meta["pages_text"] = [
+            (page or "")[:SPLIT_TEXT_PER_PAGE] for page in info["pages"]
+        ][:MAX_PAGES_TEXT]
+    return meta
+
+
 async def _process_file_inner(
     entry: dict[str, Any],
     force: bool,
@@ -166,6 +186,7 @@ async def _process_file_inner(
     apply_changes: bool,
     languages: str,
     nc: ToolCallClient,
+    with_pages_text: bool = False,
 ) -> dict[str, Any]:
     """Loads a PDF, checks the text layer, OCRs it and writes it back."""
     workdir = tempfile.mkdtemp(prefix="pdfocr-")
@@ -184,7 +205,11 @@ async def _process_file_inner(
         )
 
         info = read_text_info(local)
-        report: dict[str, Any] = {"path": entry["path"], "pages": info["page_count"]}
+        report: dict[str, Any] = {
+            "path": entry["path"],
+            "pages": info["page_count"],
+            **_text_metadata(info, with_pages_text),
+        }
         if info["has_text"] and not force:
             report["action"] = "skipped"
             report["reason"] = "text layer present"
@@ -198,6 +223,7 @@ async def _process_file_inner(
             return report
         new_info = read_text_info(out_path)
         report["pages"] = new_info["page_count"]
+        report.update(_text_metadata(new_info, with_pages_text))
         if not new_info["has_text"]:
             report["action"] = "error"
             report["error"] = "OCR ran through, but no text layer was produced"
@@ -284,6 +310,7 @@ async def process_file(
     apply_changes: bool,
     languages: str,
     connector: str = "",
+    with_pages_text: bool = False,
 ) -> dict[str, Any]:
     """Processes one PDF file completely; log wrapper around _process_file_inner."""
     nc = file_client(connector)
@@ -295,7 +322,7 @@ async def process_file(
         apply_changes,
     )
     report = await _process_file_inner(
-        entry, force, keep_original, apply_changes, languages, nc
+        entry, force, keep_original, apply_changes, languages, nc, with_pages_text
     )
     logger.info(
         "%s -> %s (%s)",
@@ -367,6 +394,7 @@ class PdfOcrWorkflow:
                         input.apply_changes,
                         input.languages,
                         connector,
+                        input.with_pages_text,
                     )
                 except Exception as exc:
                     return {

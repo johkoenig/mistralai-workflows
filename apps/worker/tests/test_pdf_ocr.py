@@ -134,6 +134,7 @@ def _make_fakes(record_path: str, listing: dict, processed: dict[str, dict]) -> 
         apply_changes: bool,
         languages: str,
         connector: str = "",
+        with_pages_text: bool = False,
     ) -> dict[str, Any]:
         _write_calls(
             record_path,
@@ -145,9 +146,16 @@ def _make_fakes(record_path: str, listing: dict, processed: dict[str, dict]) -> 
                 "apply": apply_changes,
             },
         )
-        return processed.get(
-            entry["path"], {"path": entry["path"], "action": "replaced", "pages": 2}
+        report = dict(
+            processed.get(
+                entry["path"], {"path": entry["path"], "action": "replaced", "pages": 2}
+            )
         )
+        if with_pages_text:
+            report["has_text"] = True
+            report["text"] = "Beispieltext Seite"
+            report["pages_text"] = ["Beispieltext Seite"]
+        return report
 
     return [fake_list, fake_process]
 
@@ -179,7 +187,7 @@ async def test_workflow_processes_folder_and_reports_originals_dir(
     async with create_test_worker(temporal_env, [PdfOcrWorkflow], activities=fakes):
         raw = await temporal_env.client.execute_workflow(
             PdfOcrWorkflow.run,
-            PdfOcrInput(target_path="/D", apply_changes=True),
+            PdfOcrInput(target_path="/D", apply_changes=True, with_pages_text=True),
             id="test-pdf-ocr-folder",
             task_queue="test-task-queue",
             execution_timeout=timedelta(seconds=60),
@@ -191,6 +199,10 @@ async def test_workflow_processes_folder_and_reports_originals_dir(
     actions = {a["path"]: a for a in result["actions"]}
     assert actions["/D/OhneText.pdf"]["action"] == "replaced"
     assert actions["/D/Fehler.pdf"]["action"] == "error"
+    # with_pages_text=true: per-file text metadata is in the result actions
+    assert actions["/D/OhneText.pdf"]["has_text"] is True
+    assert actions["/D/OhneText.pdf"]["text"] == "Beispieltext Seite"
+    assert actions["/D/OhneText.pdf"]["pages_text"] == ["Beispieltext Seite"]
 
     calls = [
         json.loads(line)
