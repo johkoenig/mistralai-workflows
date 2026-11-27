@@ -15,7 +15,7 @@ Ein Repository, ein Managed Deployment. Konkret gerundete Parameter des Deployme
 | Build-Context | `.` |
 | Dockerfile | `deploy/docker/Dockerfile.worker` |
 | Hardened | `true` (Pflicht, weil alle Workflows `on_behalf_of=True` nutzen) |
-| Secrets | `scan_inbox_folder` gebunden als Umgebungsvariable `SCAN_INBOX_FOLDER`; optionale Umgebungsvariable `MAX_CONCURRENT_OCR` (parallele OCR-/Scan-Aktivitäten, Default `2` — nur auf stärkerer Hardware auf 3-4 erhöhen, das ist der OOM-Schutz); `file_connector_names` gebunden als `FILE_CONNECTOR_NAMES` (Komma-Liste der Connector-Namen, z. B. `<Dein-Connector-Name>`; Default `nextcloud`) |
+| Secrets | `scan_inbox_folder` gebunden als Umgebungsvariable `SCAN_INBOX_FOLDER`; optionale Umgebungsvariablen `MAX_CONCURRENT_OCR` (parallele OCR-/Scan-Aktivitäten, Default `2` — nur auf stärkerer Hardware auf 3-4 erhöhen, das ist der OOM-Schutz), `OCR_QUALITY_MIN_CONFIDENCE` (low_confidence-Schwelle der OCR-Quality-Heuristik, Default `0.6`), `PDF_VISION_MODEL` (Vision-Modell des pdf-vision-Steps, Default `mistral-small-latest`), `PDF_VISION_THRESHOLD` (Default `0.6`), `MAX_VISION_PAGES` (Seiten-Cap pro Vision-Pass, Default `8`); `file_connector_names` gebunden als `FILE_CONNECTOR_NAMES` (Komma-Liste der Connector-Namen, z. B. `<Dein-Connector-Name>`; Default `nextcloud`) |
 
 Das Worker-Image installiert systemseitig `ghostscript`, `tesseract-ocr-all` und `jbig2dec` (Paketliste: `deploy/docker/worker-packages/workflows.txt`).
 

@@ -54,6 +54,43 @@ def read_text_info(pdf_path: str) -> dict[str, Any]:
     }
 
 
+def render_pdf_pages(
+    pdf_path: str, pages: list[int], max_px: int = 1540
+) -> dict[int, bytes]:
+    """Renders the given 1-based pages of a PDF to PNG bytes (pypdfium2).
+
+    The longest edge is capped at max_px (vision models downscale to
+    ~1540x1540 anyway), which keeps the base64 payload small. Used by the
+    vision OCR fallback (pdf-vision / vision-ocr-pass).
+    """
+    import pypdfium2 as pdfium
+
+    doc = pdfium.PdfDocument(pdf_path)
+    try:
+        out: dict[int, bytes] = {}
+        for page_number in pages:
+            index = page_number - 1
+            if index < 0 or index >= len(doc):
+                continue
+            page = doc[index]
+            width, height = page.get_size()
+            scale = min(1.0, max_px / max(width, height)) if max(width, height) else 1.0
+            bitmap = page.render(scale=scale)
+            out[page_number] = _pil_to_png(bitmap)
+        return out
+    finally:
+        doc.close()
+
+
+def _pil_to_png(bitmap: Any) -> bytes:
+    import io
+
+    pil_image = bitmap.to_pil().convert("RGB")
+    buffer = io.BytesIO()
+    pil_image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 def build_ocr_command(
     input_path: str,
     output_path: str,

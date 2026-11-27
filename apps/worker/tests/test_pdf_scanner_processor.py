@@ -28,6 +28,7 @@ from worker.workflows.pdf_scanner_processor import (
 from worker.workflows.steps.pdf_alternating_merge import PdfAlternatingMergeInput
 from worker.workflows.steps.pdf_ocr import PdfOcrInput
 from worker.workflows.steps.pdf_split import PdfSplitInput
+from worker.workflows.steps.pdf_vision import PdfVisionInput
 
 
 @workflows.workflow.define(name="pdf-ocr")
@@ -47,6 +48,10 @@ class FakeOcrStep:
                 "has_text": s["has_text"],
                 "text": s["text"],
                 "pages_text": [s["text"]],
+                "ocr_quality": {
+                    "confidence": 0.3 if s.get("low_confidence") else 0.95,
+                    "low_confidence": bool(s.get("low_confidence", False)),
+                },
             }
             for s in listing["scans"]
         ]
@@ -108,6 +113,28 @@ class FakeSplitStep:
         }
 
 
+@workflows.workflow.define(name="pdf-vision")
+class FakeVisionStep:
+    @workflows.workflow.entrypoint
+    async def run(self, input: PdfVisionInput) -> dict[str, Any]:
+        name = input.target_path.rsplit("/", 1)[-1]
+        return {
+            "target": input.target_path,
+            "applied": input.apply_changes,
+            "actions": [
+                {
+                    "path": input.target_path,
+                    "action": "vision_pass" if input.apply_changes else "planned",
+                    "text": f"VISION TEXT fuer {name}",
+                    "pages_text": {"1": f"VISION TEXT fuer {name}"},
+                    "model": "mistral-small-latest",
+                    "confidence": 0.9,
+                    "low_confidence": False,
+                }
+            ],
+        }
+
+
 def _file(
     name: str,
     order: int,
@@ -115,6 +142,7 @@ def _file(
     page_count: int = 1,
     text: str = "",
     has_text: bool = True,
+    low_confidence: bool = False,
 ) -> dict[str, Any]:
     return {
         "name": name,
@@ -125,6 +153,7 @@ def _file(
         "page_count": page_count,
         "has_text": has_text,
         "text": text,
+        "low_confidence": low_confidence,
     }
 
 
@@ -340,7 +369,13 @@ async def _run_processor(
     input_kwargs.setdefault("apply_changes", apply_changes)
     async with create_test_worker(
         temporal_env,
-        [PdfScannerProcessorWorkflow, FakeOcrStep, FakeMergeStep, FakeSplitStep],
+        [
+            PdfScannerProcessorWorkflow,
+            FakeOcrStep,
+            FakeMergeStep,
+            FakeSplitStep,
+            FakeVisionStep,
+        ],
         activities=fakes,
     ):
         raw = await temporal_env.client.execute_workflow(
@@ -564,13 +599,14 @@ async def test_no_scans_reports_note(temporal_env, tmp_path):
     assert result["actions"] == []
 
 
-def test_all_four_workflows_are_discovered():
+def test_all_five_workflows_are_discovered():
     classes = workflows.discover_all_workflows_in_package("worker.workflows")
     names = {workflows.get_workflow_definition(c).name for c in classes}
     assert names == {
         "pdf-ocr",
         "pdf-split",
         "pdf-alternating-merge",
+        "pdf-vision",
         "pdf-scanner-processor",
     }
 
@@ -581,11 +617,12 @@ def test_step_registry_points_at_the_step_workflows():
         pdf_scanner_processor.STEPS["merge"].__name__ == "PdfAlternatingMergeWorkflow"
     )
     assert pdf_scanner_processor.STEPS["split"].__name__ == "PdfSplitWorkflow"
+    assert pdf_scanner_processor.STEPS["vision"].__name__ == "PdfVisionWorkflow"
     names = {
         workflows.get_workflow_definition(cls).name
         for cls in pdf_scanner_processor.STEPS.values()
     }
-    assert names == {"pdf-ocr", "pdf-alternating-merge", "pdf-split"}
+    assert names == {"pdf-ocr", "pdf-alternating-merge", "pdf-split", "pdf-vision"}
 
 
 async def test_orchestrator_passes_ocr_languages_and_naming_rules_to_children(
@@ -604,3 +641,42 @@ async def test_orchestrator_passes_ocr_languages_and_naming_rules_to_children(
     assert split["result"]["naming_rules_seen"] == "FAKE_RULES"
     # rules were loaded exactly once (by the orchestrator), not per child
     assert len([c for c in calls if c["activity"] == "rules"]) == 1
+
+
+async def test_low_confidence_scan_is_routed_through_vision(temporal_env, tmp_path):
+    # G: a scan flagged low_confidence by the OCR quality heuristic goes through
+    # the pdf-vision child (step 2.5), and the vision text feeds naming: the
+    # SINGLE marker is gone, so the namer is not confident -> left_unchanged.
+    scans = [
+        _file(
+            "Scan0001.pdf", 1, size=1000, page_count=2, text=SINGLE, low_confidence=True
+        )
+    ]
+    result, calls = await _run_processor(
+        temporal_env, tmp_path, scans, NAMING, FRONT_BACK_NO
+    )
+    by_step = _by_step(result)
+    assert "vision" in by_step
+    vision = by_step["vision"][0]
+    assert vision["target"] == "SCANNER_INBOX/Scan0001.pdf"
+    assert vision["action"] == "vision_pass"
+    steps_in_order = [a["step"] for a in result["actions"]]
+    assert steps_in_order.index("vision") < steps_in_order.index("name")
+    # vision text replaced the OCR text for naming (no SINGLE marker anymore)
+    assert by_step["name"][0]["action"] == "left_unchanged"
+    assert not [c for c in calls if c["activity"] == "rename"]
+
+
+async def test_vision_fallback_disabled_skips_step(temporal_env, tmp_path):
+    scans = [
+        _file(
+            "Scan0001.pdf", 1, size=1000, page_count=1, text=SINGLE, low_confidence=True
+        )
+    ]
+    result, _ = await _run_processor(
+        temporal_env, tmp_path, scans, NAMING, FRONT_BACK_NO, vision_fallback=False
+    )
+    by_step = _by_step(result)
+    assert "vision" not in by_step
+    # without vision override the SINGLE marker names the file as usual
+    assert by_step["name"][0]["action"] == "renamed"

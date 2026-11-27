@@ -52,6 +52,7 @@ from worker.pdf_ops import (
     ORIGINALS_DIR_NAME,
     SPLIT_TEXT_PER_PAGE,
     TEXT_SNIPPET_CHARS,
+    assess_ocr_quality,
     ensure_folder,
     file_client,
     file_connectors,
@@ -387,7 +388,7 @@ class PdfOcrWorkflow:
         async def handle(file: dict[str, Any]) -> dict[str, Any]:
             async with semaphore:
                 try:
-                    return await process_file(
+                    report = await process_file(
                         file,
                         input.force,
                         input.keep_original,
@@ -396,6 +397,14 @@ class PdfOcrWorkflow:
                         connector,
                         input.with_pages_text,
                     )
+                    if report.get("action") in ("replaced", "planned") and report.get(
+                        "has_text"
+                    ):
+                        # Roadmap F: flag weak OCR results as low_confidence.
+                        report["ocr_quality"] = await assess_ocr_quality(
+                            report.get("pages_text") or [report.get("text", "")]
+                        )
+                    return report
                 except Exception as exc:
                     return {
                         "path": file["path"],

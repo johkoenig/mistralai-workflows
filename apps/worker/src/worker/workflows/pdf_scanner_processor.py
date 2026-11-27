@@ -13,10 +13,14 @@ workflows in workflows/steps/ - each step is also directly triggerable on its ow
 1. Find new scans "Scan.pdf" / "ScanNNNN.pdf" and park a copy of each raw scan
    under <folder>/.originals/pdf-scanner-processor/ (before anything modifies it).
 2. Step pdf-ocr on the whole folder (with_pages_text=true): PDFs without a
-   text layer get OCR (Tesseract deu+eng, deskew, page rotation); the result
-   replaces the file in Nextcloud (the step secures its own backup under
-   .originals/pdf-ocr/). The step returns per file page count, has_text and
-   text snippets, so step 3 needs no second download.
+   text layer get OCR (Tesseract, deskew, page rotation); the result replaces
+   the file in Nextcloud (the step secures its own backup under
+   .originals/pdf-ocr/). The step returns per file page count, has_text, text
+   snippets and an OCR quality flag, so step 3 needs no second download.
+2.5. Vision fallback (roadmap G): OCR results flagged low_confidence go through
+   the pdf-vision step (pages rendered and read by a vision model, capped by
+   MAX_VISION_PAGES). The vision text then feeds detection, split planning and
+   naming - it never replaces the PDF text layer.
 3. Detect front/back pairs from the OCR metadata (analyze-scan-file only as
    fallback for uncovered files): structural prefilter (consecutive scan
    order, same page count, size ratio 0.5-2.0, both with text), then the LLM
@@ -39,7 +43,7 @@ workflows in workflows/steps/ - each step is also directly triggerable on its ow
    left unchanged. Rename only.
 
 apply_changes=false (dry run) plans everything and writes nothing.
-Step switches: merge_front_back=false skips step 4, split_parts=false skips step 5.
+Step switches: merge_front_back=false skips step 4, split_parts=false skips step 5, vision_fallback=false skips step 2.5. vision_model overrides the PDF_VISION_MODEL env knob.
 
 Child workflows get deterministic execution IDs ({run}-{step}-{item}), so a
 replayed run reuses the existing child executions instead of duplicating them.
@@ -96,6 +100,7 @@ from worker.workflows.steps.pdf_split import (
     PdfSplitWorkflow,
     resolve_plan,
 )
+from worker.workflows.steps.pdf_vision import PdfVisionInput, PdfVisionWorkflow
 
 # Default folder from the deployment (workspace secret, environment variable);
 # a folder_path given at start always takes precedence.
@@ -116,6 +121,8 @@ class PdfScannerProcessorInput(pydantic.BaseModel):
     connector: str = ""
     merge_front_back: bool = True
     split_parts: bool = True
+    vision_fallback: bool = True
+    vision_model: str = ""  # empty -> PDF_VISION_MODEL env knob in the pdf-vision step
     ocr_languages: str = OCR_LANGUAGES
     """OCR languages for the pdf-ocr child (Tesseract codes, default deu+eng;
     scanner-inbox runs can set deu to roughly halve OCR time)."""
@@ -127,6 +134,7 @@ STEPS: dict[str, type[Any]] = {
     "ocr": PdfOcrWorkflow,
     "merge": PdfAlternatingMergeWorkflow,
     "split": PdfSplitWorkflow,
+    "vision": PdfVisionWorkflow,
 }
 
 
@@ -334,6 +342,63 @@ class PdfScannerProcessorWorkflow:
         )
         actions.append({"step": "ocr", "result": ocr_result})
 
+        # 2.5) Vision fallback (roadmap G): OCR results flagged low_confidence
+        #      go through the pdf-vision step (page-capped via MAX_VISION_PAGES);
+        #      the vision text then feeds detection, split planning and naming -
+        #      it never replaces the PDF text layer.
+        vision_map: dict[str, dict[str, Any]] = {}
+        if input.vision_fallback:
+            flagged = [
+                action
+                for action in ocr_result.get("actions", [])
+                if action.get("path")
+                and (action.get("ocr_quality") or {}).get("low_confidence")
+            ]
+
+            async def vision_bounded(
+                index: int, action: dict[str, Any]
+            ) -> dict[str, Any]:
+                async with semaphore:
+                    handle = await workflows.workflow.execute_workflow(
+                        STEPS["vision"],
+                        PdfVisionInput(
+                            target_path=action["path"],
+                            apply_changes=input.apply_changes,
+                            model=input.vision_model,
+                            connector=connector,
+                        ),
+                        execution_id=f"{run_id}-vision-{index}",
+                        wait=False,
+                    )
+                    result = await handle
+                entry = result["actions"][0] if result.get("actions") else {}
+                return {
+                    "step": "vision",
+                    "target": action.get("path"),
+                    "action": entry.get("action", "error"),
+                    "model": entry.get("model"),
+                    "confidence": entry.get("confidence"),
+                    "low_confidence": entry.get("low_confidence"),
+                    "result": result,
+                }
+
+            vision_actions = list(
+                await asyncio.gather(
+                    *(vision_bounded(i, action) for i, action in enumerate(flagged))
+                )
+            )
+            actions.extend(vision_actions)
+            for vision_action in vision_actions:
+                entry = (
+                    vision_action.get("result", {}).get("actions", [{}])[0]
+                    if vision_action.get("result")
+                    else {}
+                )
+                if vision_action["action"] in ("vision_pass", "planned") and entry.get(
+                    "text"
+                ):
+                    vision_map[vision_action["target"]] = entry
+
         # 3) Text metadata comes from the pdf-ocr step result (no re-download);
         #    analyze-scan-file only as fallback for scans the OCR step did not
         #    cover. Then detect front/back pairs.
@@ -346,13 +411,28 @@ class PdfScannerProcessorWorkflow:
         async def metadata_bounded(scan: dict[str, Any]) -> dict[str, Any]:
             action = ocr_meta.get(scan["path"])
             if action and action.get("has_text") is not None and "text" in action:
-                return {
+                item = {
                     **scan,
                     "page_count": action.get("pages", 0),
                     "has_text": action["has_text"],
                     "text": action["text"],
                     "pages_text": action.get("pages_text") or [action["text"]],
+                    "low_confidence": bool(
+                        (action.get("ocr_quality") or {}).get("low_confidence", False)
+                    ),
                 }
+                vision = vision_map.get(scan["path"])
+                if vision and vision.get("text"):
+                    # Vision text feeds detection/split/naming (never the PDF
+                    # text layer).
+                    item["text"] = vision["text"][:TEXT_SNIPPET_CHARS]
+                    pages_text = vision.get("pages_text") or {}
+                    item["pages_text"] = [
+                        pages_text.get(str(number), "")
+                        for number in sorted((int(k) for k in pages_text), key=int)
+                    ] or [item["text"]]
+                    item["vision_used"] = True
+                return item
             async with semaphore:
                 return await analyze_scan_file(scan, connector)
 
@@ -405,6 +485,8 @@ class PdfScannerProcessorWorkflow:
                 "text": item["text"],
                 "page_count": item.get("page_count", 0),
                 "pages_text": item.get("pages_text") or [item.get("text", "")],
+                "low_confidence": item.get("low_confidence", False),
+                "vision_used": item.get("vision_used", False),
             }
             for item in analyzed
             if item["path"] not in paired_paths

@@ -10,7 +10,9 @@ dependencies = [
     "pydantic>=2.14.4",
     "structlog>=25.5.0",
     "ocrmypdf>=17.14.2",
+    "pikepdf>=10.0",
     "pypdf>=7.1.1",
+    "pypdfium2>=4.30",
 ]
 
 [build-system]

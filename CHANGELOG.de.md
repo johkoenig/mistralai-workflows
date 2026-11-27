@@ -12,7 +12,11 @@ Einträge sind Einzeiler; der Pull-Request ist am Ende in Klammern manuell verli
 
 ### Added
 
+- Neuer Step-Workflow `pdf-vision`: Vision-OCR-Fallback (Seiten via pypdfium2 gerendert, von einem Vision-Modell gelesen), Sidecar `<Name>.txt` + PDF-Metadaten-Flag `/VisionOcrPass`, Textebene unangetastet; Orchestrator-Schritt 2.5 schickt `low_confidence`-OCR-Ergebnisse hindurch (`vision_fallback` / `vision_model`-Inputs). ([#40](https://github.com/johkoenig/mistralai-workflows/pull/40))
+
 ### Changed
+
+- `pdf-ocr`-Ergebnisse tragen jetzt `ocr_quality` (`confidence` / `low_confidence` / `metrics`) aus der neuen Heuristik `assess-ocr-quality`; der Orchestrator markiert schwache OCR-Ergebnisse im Run-Report als `low_confidence` (Umgebungsvariable `OCR_QUALITY_MIN_CONFIDENCE`, Default `0.6`). ([#40](https://github.com/johkoenig/mistralai-workflows/pull/40))
 
 ### Deprecated
 

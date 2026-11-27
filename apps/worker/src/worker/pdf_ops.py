@@ -8,6 +8,7 @@ so naming behavior and the merge algorithm exist exactly once.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     from mistralai.client.models import (
         AssistantMessage,
         ChatCompletionRequestMessageTypedDict,
+        ContentChunkTypedDict,
     )
 
 
@@ -75,6 +77,19 @@ MIN_NAMING_CONFIDENCE = 0.7
 # Configurable via environment (same pattern as SCAN_INBOX_FOLDER), e.g. 3-4 on
 # stronger hardware; the default 2 protects small instances from OOM.
 MAX_CONCURRENT_OCR = int(os.environ.get("MAX_CONCURRENT_OCR", "2"))
+# OCR quality heuristic (roadmap F): a page counts as empty below this many
+# non-space characters; files below OCR_QUALITY_MIN_CONFIDENCE are flagged
+# low_confidence in the run report (env-configurable like MAX_CONCURRENT_OCR).
+OCR_EMPTY_PAGE_CHARS = 20
+OCR_QUALITY_MIN_CONFIDENCE = float(os.environ.get("OCR_QUALITY_MIN_CONFIDENCE", "0.6"))
+# Vision fallback knobs (roadmap G): model, quality threshold, page cap.
+PDF_VISION_MODEL = os.environ.get("PDF_VISION_MODEL", "mistral-small-latest")
+PDF_VISION_THRESHOLD = float(os.environ.get("PDF_VISION_THRESHOLD", "0.6"))
+MAX_VISION_PAGES = int(os.environ.get("MAX_VISION_PAGES", "8"))
+# Vision API: max images per chat request (API limit), max render edge in px
+# (vision models downscale to ~1540x1540 anyway).
+VISION_MAX_IMAGES_PER_REQUEST = 8
+VISION_MAX_RENDER_PX = 1540
 # Folder-specific naming rules (AGENTS.md): maximum number of characters loaded.
 NAMING_RULES_MAX_CHARS = 4000
 # Uniform storage location for secured originals of all workflows.
@@ -752,3 +767,166 @@ async def load_naming_rules(folder: str, connector: str = "") -> dict[str, Any]:
             logger.info("naming rules loaded: %s (%d chars)", path, len(rules))
             return {"rules": rules, "source": path}
     return {"rules": "", "source": None}
+
+
+def ocr_quality_metrics(pages: list[str]) -> dict[str, Any]:
+    """Pure OCR-quality heuristic (roadmap F, no LLM, no vision).
+
+    Signals: empty pages, alphanumeric ratio of the non-space text, and the
+    word-length distribution (real words are typically 2-15 chars; OCR garbage
+    is a pile of 1-char or very long tokens). Returns metrics plus a
+    confidence in [0, 1] and the low_confidence flag.
+    """
+    page_count = max(1, len(pages))
+    empty_pages = sum(
+        1 for page in pages if len((page or "").strip()) < OCR_EMPTY_PAGE_CHARS
+    )
+    text = " ".join(page or "" for page in pages)
+    non_space = [ch for ch in text if not ch.isspace()]
+    alnum_ratio = (
+        sum(1 for ch in non_space if ch.isalnum()) / len(non_space)
+        if non_space
+        else 0.0
+    )
+    words = [w for w in re.split(r"\s+", text) if w]
+    vowels = set("aeiouyäöüAEIOUYÄÖÜ")
+    if words:
+        mean_len = sum(len(w) for w in words) / len(words)
+        # real words: 2-15 chars and contain a vowel; OCR garbage is mostly
+        # 1-char tokens or very long runs without vowels
+        reasonable = sum(
+            1 for w in words if 2 <= len(w) <= 15 and any(c in vowels for c in w)
+        )
+        word_score = reasonable / len(words)
+    else:
+        mean_len = 0.0
+        word_score = 0.0
+    empty_score = 1.0 - (empty_pages / page_count)
+    # alnum ratio ~0.75+ is normal for real text; mean word length 3-9 typical
+    alnum_score = min(1.0, alnum_ratio / 0.75)
+    len_score = min(1.0, max(0.0, (12.0 - mean_len) / 9.0)) if mean_len else 0.0
+    confidence = round(
+        0.30 * empty_score + 0.20 * alnum_score + 0.35 * word_score + 0.15 * len_score,
+        3,
+    )
+    return {
+        "confidence": max(0.0, min(1.0, confidence)),
+        "low_confidence": confidence < OCR_QUALITY_MIN_CONFIDENCE,
+        "metrics": {
+            "pages": page_count,
+            "empty_pages": empty_pages,
+            "alnum_ratio": round(alnum_ratio, 3),
+            "mean_word_length": round(mean_len, 2),
+            "reasonable_word_ratio": round(word_score, 3),
+        },
+    }
+
+
+@workflows.activity(
+    name="assess-ocr-quality",
+    start_to_close_timeout=timedelta(minutes=2),
+    retry_policy_max_attempts=2,
+)
+async def assess_ocr_quality(pages: list[str]) -> dict[str, Any]:
+    """Activity wrapper around the pure ocr_quality_metrics heuristic."""
+    return ocr_quality_metrics(pages)
+
+
+VISION_OCR_SYSTEM_PROMPT = (
+    "You receive the rendered page images of a scanned PDF (page numbers are "
+    "given). Transcribe the visible text of every page exactly, in the "
+    "language of the document. Do not describe the images, do not invent "
+    "content; empty pages stay empty. Answer with JSON only: "
+    '{"pages": {"<page number as string>": "<transcribed text>"}}.'
+)
+
+
+@workflows.activity(
+    name="vision-ocr-pass",
+    start_to_close_timeout=timedelta(minutes=15),
+    heartbeat_timeout=timedelta(minutes=2),
+    retry_policy_max_attempts=2,
+)
+async def vision_ocr_pass(
+    pdf_path: str, pages: list[int], model: str = ""
+) -> dict[str, Any]:
+    """Vision fallback (roadmap G): renders and reads pages with a vision model.
+
+    Renders the given pages of a local PDF and reads them with a
+    vision-capable chat model (base64 image parts, at most
+    VISION_MAX_IMAGES_PER_REQUEST images per request). Returns the per-page
+    transcribed text plus a quality estimate of the vision text. Never writes
+    anything - the caller stores the result (sidecar txt / metadata flag).
+    """
+    from worker.ocr import render_pdf_pages
+
+    model = model or PDF_VISION_MODEL
+    pages = [p for p in pages if p >= 1][:MAX_VISION_PAGES]
+    if not pages:
+        return {
+            "pages_text": {},
+            "text": "",
+            "model": model,
+            "confidence": 0.0,
+            "error": "no pages",
+        }
+    renders = await asyncio.to_thread(
+        render_pdf_pages, pdf_path, pages, VISION_MAX_RENDER_PX
+    )
+    client = get_mistral_client()
+    pages_text: dict[str, str] = {}
+    for start in range(0, len(pages), VISION_MAX_IMAGES_PER_REQUEST):
+        batch = pages[start : start + VISION_MAX_IMAGES_PER_REQUEST]
+        content: list[ContentChunkTypedDict] = [
+            {
+                "type": "text",
+                "text": "Transcribe these PDF pages. Page numbers: "
+                + ", ".join(str(p) for p in batch),
+            }
+        ]
+        for page in batch:
+            png = renders.get(page)
+            if png is None:
+                continue
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": "data:image/png;base64,"
+                    + base64.b64encode(png).decode("ascii"),
+                }
+            )
+        messages: list[ChatCompletionRequestMessageTypedDict] = [
+            {"role": "system", "content": VISION_OCR_SYSTEM_PROMPT},
+            {"role": "user", "content": content},
+        ]
+        response = client.chat.complete(
+            model=model,
+            messages=messages,
+            response_format={"type": "json_object"},
+            temperature=0.0,
+            top_p=1,
+        )
+        message = cast("AssistantMessage", response.choices[0].message).content
+        try:
+            data: Any = json.loads(message) if isinstance(message, str) else message
+            for key, value in (data.get("pages") or {}).items():
+                pages_text[str(key)] = str(value or "")
+        except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
+            return {
+                "pages_text": pages_text,
+                "text": "",
+                "model": model,
+                "confidence": 0.0,
+                "error": "vision model returned no JSON",
+            }
+    ordered = [pages_text.get(str(p), "") for p in pages]
+    quality = ocr_quality_metrics(ordered)
+    return {
+        "pages_text": {str(p): t for p, t in zip(pages, ordered, strict=True)},
+        "text": "\n\n".join(ordered),
+        "model": model,
+        "confidence": quality["confidence"],
+        "low_confidence": quality["low_confidence"]
+        or quality["confidence"] < PDF_VISION_THRESHOLD,
+        "pages": pages,
+    }

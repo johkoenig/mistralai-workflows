@@ -59,6 +59,13 @@ exclude = ["apps/web"]
 "mistralai-capabilities-backend-workflows" = false
 
 # Central tool policy (AGENTS.md): rule exemptions live here, never as per-line noqa in code.
+[tool.mypy]
+# pypdfium2 ships no py.typed marker; its use is confined to render_pdf_pages (worker/ocr.py),
+# which keeps the returned values narrowly typed itself.
+[[tool.mypy.overrides]]
+module = "pypdfium2"
+ignore_missing_imports = true
+
 [tool.ruff]
 # The capability scaffold under .agents is vendored by Mistral tooling and maintained outside this
 # repo (scripts, semgrep rules); the repo's own lint rules do not apply to it.

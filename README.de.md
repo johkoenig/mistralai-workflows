@@ -4,7 +4,7 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/johkoenig/mistralai-workflows/ci.yml?branch=main&label=CI)](https://github.com/johkoenig/mistralai-workflows/actions/workflows/ci.yml)
 
-Ein Repository, ein Managed Deployment in deinem Mistral-Workspace, vier Workflows, die auf deinen Dokumenten **in deinem eigenen Speicher** laufen. Das Deployment hat zwei Ebenen: Ein **Orchestrator** fährt den kompletten Scan-Inbox-Prozess von vorne bis hinten und ruft die drei spezialisierten **Steps** als Child-Workflows auf — jeder Step ist auch einzeln startbar. Nichts verlässt den verbundenen Speicher, außer den OCR-/Benennungs-Prompts an die Mistral-API.
+Ein Repository, ein Managed Deployment in deinem Mistral-Workspace, fünf Workflows, die auf deinen Dokumenten **in deinem eigenen Speicher** laufen. Das Deployment hat zwei Ebenen: Ein **Orchestrator** fährt den kompletten Scan-Inbox-Prozess von vorne bis hinten und ruft die vier spezialisierten **Steps** als Child-Workflows auf — jeder Step ist auch einzeln startbar. Nichts verlässt den verbundenen Speicher, außer den OCR-/Benennungs-Prompts an die Mistral-API.
 
 ## Workflows
 
@@ -21,8 +21,9 @@ Ein Repository, ein Managed Deployment in deinem Mistral-Workspace, vier Workflo
 | `pdf-ocr` | OCR für eine einzelne PDF oder einen ganzen Ordner (optional rekursiv) |
 | `pdf-alternating-merge` | Mischt Duplex-Paare (Vorder-/Rückseiten alternierend) per JSON-Steuerdatei oder direktem `pairs`-Start-Input |
 | `pdf-split` | Teilt eine PDF an angegebenen Seitenzahlen oder per LLM geplanten Trennstellen (Rückfrage bei Unsicherheit) |
+| `pdf-vision` | Vision-OCR-Fallback für schwache OCR-Ergebnisse (Sidecar `.txt` + PDF-Metadaten-Flag; Textebene unangetastet) |
 
-Alle vier werden **ausschließlich manuell** gestartet (Studio, Chat oder MCP `execute_workflow`) — nie per Schedule oder Webhook, damit ein Lauf nie einen unvollständigen Scan-Job auseinanderreißt.
+Alle fünf werden **ausschließlich manuell** gestartet (Studio, Chat oder MCP `execute_workflow`) — nie per Schedule oder Webhook, damit ein Lauf nie einen unvollständigen Scan-Job auseinanderreißt.
 
 ## Schnellstart
 
@@ -39,6 +40,7 @@ Alle vier werden **ausschließlich manuell** gestartet (Studio, Chat oder MCP `e
 | `merge_front_back` | Orchestrator: Vorder-/Rückseiten-Paare erkennen und mischen | `true` |
 | `split_parts` | Orchestrator: Split-Step vor der Benennung auf jede Einheit anwenden | `true` |
 | `ocr_languages` | Orchestrator: OCR-Sprachen für den pdf-ocr-Child (Scanner-Eingang: `deu`) | `deu+eng` |
+| `vision_fallback` / `vision_model` | Orchestrator: low-confidence-OCR-Ergebnisse durch `pdf-vision` routen; Modell-Override (`PDF_VISION_MODEL`-Env-Default) | `true` / `""` |
 | `apply_changes` | `false` = Dry-Run: alles wird gelesen, OCRed und geplant, geschrieben wird nichts | `true` |
 | `model` | LLM für Benennung, Planung und den Vorder-/Rückseiten-Check | `mistral-small-latest` |
 | `connector` | Datei-Connector aus `FILE_CONNECTOR_NAMES`, den dieser Aufruf ansprechen soll | Default-Connector |
@@ -51,7 +53,7 @@ Im Projekt eingebaut (Code und Basis-Prompt):
 
 - Das Projekt selbst definiert **kein Dateinamensschema** — Namen wählt das LLM. Das Projekt bereinigt Namen nur technisch (ASCII, Umlaute transliteriert, max. 80 Zeichen) und überschreibt nie Dateien (Kollisionen bekommen `_2`, `_3`, ...). Gemischte Vorder-/Rückseiten-Paare bekommen zuerst den Zwischennamen `ScanMerged<N>.pdf` (N = größere Scan-Nummer des Paares) und werden danach in den endgültigen Namen umbenannt.
 - Das LLM benennt und fragt in der Sprache des Dokuments.
-- **Originale werden immer gesichert** unter `<Ordner>/.originals/<Workflow>/` — in allen vier Workflows standardmäßig an (Merge legt pro Ziel einen Unterordner an, die anderen parken die Datei direkt). Die Workflows löschen nie etwas; `.originals/` räumst du nach der Prüfung von Hand auf.
+- **Originale werden immer gesichert** unter `<Ordner>/.originals/<Workflow>/` — in allen fünf Workflows standardmäßig an (Merge legt pro Ziel einen Unterordner an, die anderen parken die Datei direkt). Die Workflows löschen nie etwas; `.originals/` räumst du nach der Prüfung von Hand auf.
 - OCR-, Download- und Upload-Aktivitäten senden Heartbeats: ein abgestürzter Worker wird binnen ~2 Minuten erkannt und die Aktivität automatisch wiederholt.
 
 Benennungskonventionen kommen aus deiner `AGENTS.md` — **nicht Teil dieses Repositories**:

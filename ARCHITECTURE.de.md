@@ -10,7 +10,7 @@ OPERATIONS.md. Hier sind Konventionen und Arbeitsteilung festgehalten.
 
 ## Arbeitsteilung
 
-Zwei Ebenen: drei spezialisierte Step-Workflows in `workflows/steps/` und ein
+Zwei Ebenen: vier spezialisierte Step-Workflows in `workflows/steps/` und ein
 Orchestrator in `workflows/`, der sie als Child-Workflows aufruft.
 
 | Workflow | Aufgabe | Trigger |
@@ -19,6 +19,7 @@ Orchestrator in `workflows/`, der sie als Child-Workflows aufruft.
 | pdf-ocr | PDFs ohne Textebene aufbereiten (eine Datei, ein Ordner, optional rekursiv) | manuell oder Child von pdf-scanner-processor |
 | pdf-alternating-merge | Duplex-Paare alternierend mischen (pairs-Input oder Steuerdatei) | manuell oder Child von pdf-scanner-processor |
 | pdf-split | PDF in Teile zerlegen (explizite Trennstellen oder LLM-Planung mit Rueckfrage), Original nach .originals/pdf-split/ | manuell oder Child von pdf-scanner-processor |
+| pdf-vision | Vision-OCR-Fallback für low-confidence-OCR-Ergebnisse; Sidecar <Name>.txt + Metadaten-Flag, ersetzt nie die Textebene | manuell oder Child des pdf-scanner-processor (Schritt 2.5) |
 
 ## Trigger-Philosophie
 
