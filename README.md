@@ -38,6 +38,7 @@ All four are started **manually** (Studio, chat, or MCP `execute_workflow`) — 
 | `split_at` | Explicit split points for `pdf-split`: page numbers (1-based) after which the PDF is cut | LLM-planned split points |
 | `merge_front_back` | Orchestrator: detect and merge front/back pairs | `true` |
 | `split_parts` | Orchestrator: run the split step on every unit before naming | `true` |
+| `ocr_languages` | Orchestrator: OCR languages for the pdf-ocr child (scanner inbox: `deu`) | `deu+eng` |
 | `apply_changes` | `false` = dry run: everything is read, OCRed and planned, nothing is written | `true` |
 | `model` | LLM for naming, planning and the front/back check | `mistral-small-latest` |
 | `connector` | File connector from `FILE_CONNECTOR_NAMES` that this call should target | default connector |
