@@ -178,3 +178,13 @@ def test_workflow_is_discovered():
     classes = workflows.discover_all_workflows_in_package("worker.workflows")
     names = {workflows.get_workflow_definition(c).name for c in classes}
     assert "pdf-vision" in names
+
+
+def test_all_workflows_run_on_behalf_of_the_triggering_user():
+    # on_behalf_of=True is what lets connector calls resolve the triggering
+    # user's credentials (hardened deployment); without it the internal
+    # connector_resolve activity gets 404 "Connector <name> not found".
+    classes = workflows.discover_all_workflows_in_package("worker.workflows")
+    for cls in classes:
+        definition = workflows.get_workflow_definition(cls)
+        assert definition.on_behalf_of is True, definition.name
