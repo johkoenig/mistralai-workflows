@@ -12,7 +12,11 @@ Entries are one-liners; the pull request is linked manually in parentheses at th
 
 ### Added
 
+- New step workflow `pdf-vision`: vision OCR fallback (pages rendered via pypdfium2, read by a vision model), sidecar `<name>.txt` + `/VisionOcrPass` PDF metadata flag, text layer untouched; orchestrator step 2.5 routes `low_confidence` OCR results through it (`vision_fallback` / `vision_model` inputs). ([#40](https://github.com/johkoenig/mistralai-workflows/pull/40))
+
 ### Changed
+
+- `pdf-ocr` results carry `ocr_quality` (`confidence` / `low_confidence` / `metrics`) from the new `assess-ocr-quality` heuristic; the orchestrator flags weak OCR results as `low_confidence` in the run report (env knob `OCR_QUALITY_MIN_CONFIDENCE`, default `0.6`). ([#40](https://github.com/johkoenig/mistralai-workflows/pull/40))
 
 ### Deprecated
 
