@@ -8,6 +8,20 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), und d
 
 Einträge sind Einzeiler; der Pull-Request ist am Ende in Klammern manuell verlinkt. `Unreleased` trägt keine Link-Definition (die müsste bei jedem Push aktualisiert werden); freigegebene Versionen verlinken über die Definitionen am Dateiende auf Tag oder PR.
 
+## Unreleased
+
+### Added
+
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Security
+
 ## [0.4.0] - 2026-11-27
 
 ### Added
