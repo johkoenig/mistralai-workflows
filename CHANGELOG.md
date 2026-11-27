@@ -16,6 +16,8 @@ Entries are one-liners; the pull request is linked manually in parentheses at th
 
 - Release and changelog process codified in `AGENTS.md`: content PRs, six standard categories, dedicated release PR, "Bump to Next Version" commit, annotated tags on `main`, no dev suffix. ([#37](https://github.com/johkoenig/mistralai-workflows/pull/37))
 - Changelog entries are one-liners with the PR linked in parentheses; existing entries reworked accordingly. ([#37](https://github.com/johkoenig/mistralai-workflows/pull/37))
+- Pipeline speed-up (roadmap point A): text metadata flows from the `pdf-ocr` result through the orchestrator (no re-download per scan), split planning runs inline and the `pdf-split` child is spawned only on a confirmed split. ([#36](https://github.com/johkoenig/mistralai-workflows/pull/36))
+- Orchestrator backup loop and `name-document` LLM calls now run in parallel via the shared semaphore (roadmap point B). ([#36](https://github.com/johkoenig/mistralai-workflows/pull/36))
 
 ### Deprecated
 

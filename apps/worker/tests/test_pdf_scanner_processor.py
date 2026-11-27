@@ -23,6 +23,7 @@ from worker.workflows import pdf_scanner_processor
 from worker.workflows.pdf_scanner_processor import (
     PdfScannerProcessorInput,
     PdfScannerProcessorWorkflow,
+    list_scan_files,
 )
 from worker.workflows.steps.pdf_alternating_merge import PdfAlternatingMergeInput
 from worker.workflows.steps.pdf_ocr import PdfOcrInput
@@ -33,11 +34,27 @@ from worker.workflows.steps.pdf_split import PdfSplitInput
 class FakeOcrStep:
     @workflows.workflow.entrypoint
     async def run(self, input: PdfOcrInput) -> dict[str, Any]:
+        # Returns per-file text metadata (like the real step with
+        # with_pages_text=true), so the orchestrator needs no analyze download.
+        # The scans come from the fake list-scan-files activity (module state is
+        # not visible inside the workflow sandbox).
+        listing = await list_scan_files(input.target_path, input.connector)
+        actions = [
+            {
+                "path": s["path"],
+                "pages": s["page_count"],
+                "action": "skipped",
+                "has_text": s["has_text"],
+                "text": s["text"],
+                "pages_text": [s["text"]],
+            }
+            for s in listing["scans"]
+        ]
         return {
             "target": input.target_path,
             "kind": "folder",
             "applied": input.apply_changes,
-            "actions": [],
+            "actions": actions,
         }
 
 
@@ -71,16 +88,20 @@ class FakeMergeStep:
 class FakeSplitStep:
     @workflows.workflow.entrypoint
     async def run(self, input: PdfSplitInput) -> dict[str, Any]:
-        # Deterministic stand-in for the LLM plan: the "SINGLE" scan
-        # (Scan0009.pdf, content-based decision) counts as confidently
-        # splittable, everything else as no_split.
-        base = input.target_path.rsplit("/", 1)[-1]
-        action = "split" if base.startswith("Scan0009") else "no_split"
+        # Only called with a CONFIRMED plan (explicit split_at + titles):
+        # the orchestrator plans inline via the plan-split activity first.
+        split_at = input.split_at or []
+        titles = input.titles or [f"Teil {i + 1}" for i in range(len(split_at) + 1)]
+        folder = input.target_path.rsplit("/", 1)[0] if "/" in input.target_path else ""
+        parts = [
+            {"to": f"{folder}/{title}.pdf", "count": i + 1}
+            for i, title in enumerate(titles)
+        ]
         return {
             "target": input.target_path,
-            "applied": input.apply_changes and action == "split",
-            "action": action,
-            "parts": [],
+            "applied": input.apply_changes and bool(split_at),
+            "action": "split" if input.apply_changes else "planned",
+            "parts": parts,
         }
 
 
@@ -227,6 +248,39 @@ def _make_fakes(
                 return naming
         return {"date": None, "title": "", "confidence": 0.0}
 
+    @workflows.activity(name="plan-split")
+    async def fake_plan_split(
+        page_texts: list[str],
+        page_count: int,
+        fixed_split_at: list[int] | None,
+        model: str,
+        naming_rules: str = "",
+    ) -> dict[str, Any]:
+        joined = "\n".join(page_texts or [])
+        if fixed_split_at is not None:
+            return {
+                "split_at": fixed_split_at,
+                "titles": [f"Titel {i + 1}" for i in range(len(fixed_split_at) + 1)],
+                "confidence": 0.9,
+                "needs_input": False,
+                "question": "",
+            }
+        if "SPLITME" in joined:
+            return {
+                "split_at": [1],
+                "titles": ["Teil A", "Teil B"],
+                "confidence": 0.9,
+                "needs_input": False,
+                "question": "",
+            }
+        return {
+            "split_at": [],
+            "titles": ["Ganzes Dokument"],
+            "confidence": 0.9,
+            "needs_input": False,
+            "question": "",
+        }
+
     @workflows.activity(name="front-back-check")
     async def fake_front_back(
         front_text: str, back_text: str, model: str
@@ -259,6 +313,7 @@ def _make_fakes(
         fake_list,
         fake_analyze,
         fake_name,
+        fake_plan_split,
         fake_front_back,
         fake_rules,
         fake_backup,
@@ -311,6 +366,7 @@ def _by_step(result: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
 PAIR_FRONT = "PAIR Briefkopf Beispielpraxis Datum 18.11.2026 Rechnungsnummer 4711"
 PAIR_BACK = "PAIR Rueckseite mit freundlichen Gruessen und Unterschrift"
 SINGLE = "SINGLE ganz anderes Dokument ohne Datum"
+SPLITTABLE = "SPLITTABLE Dokument mit SPLITME Marker fuer zwei Teile"
 
 NAMING = {
     "PAIR": {
@@ -336,7 +392,7 @@ async def test_pair_merged_then_split_before_naming(temporal_env, tmp_path):
     scans = [
         _file("Scan.pdf", -1, size=1000, page_count=2, text=PAIR_FRONT),
         _file("Scan0007.pdf", 7, size=1100, page_count=2, text=PAIR_BACK),
-        _file("Scan0009.pdf", 9, size=900, page_count=1, text=SINGLE),
+        _file("Scan0009.pdf", 9, size=900, page_count=2, text=SPLITTABLE),
     ]
     result, calls = await _run_processor(
         temporal_env, tmp_path, scans, NAMING, FRONT_BACK_YES
@@ -368,18 +424,23 @@ async def test_pair_merged_then_split_before_naming(temporal_env, tmp_path):
     assert merge["action"] == "merged"
     assert merge["to"] == "SCANNER_INBOX/ScanMerged0007.pdf"
 
-    # split ran per unit BEFORE naming, on the original paths; the fake only
-    # splits the "SINGLE" scan (Scan0009.pdf)
+    # no second download: text metadata comes from the pdf-ocr result
+    assert not [c for c in calls if c["activity"] == "analyze"]
+
+    # split planned inline per unit BEFORE naming, on the original paths; the
+    # pdf-split child runs only for the confirmed split (Scan0009, SPLITME)
     splits = {s["target"]: s["action"] for s in by_step["split"]}
     assert splits == {
         "SCANNER_INBOX/ScanMerged0007.pdf": "no_split",
         "SCANNER_INBOX/Scan0009.pdf": "split",
     }
+    split_plans = {s["target"]: s["plan"]["split_at"] for s in by_step["split"]}
+    assert split_plans["SCANNER_INBOX/Scan0009.pdf"] == [1]
     steps_in_order = [a["step"] for a in result["actions"]]
     assert steps_in_order.index("split") < steps_in_order.index("name")
 
     # naming: only the unit that was NOT split is renamed; the split unit's
-    # parts are already named by the pdf-split step (named_by_split)
+    # parts are named from the split plan (named_by_split)
     renames = {c["from"]: c["to"] for c in calls if c["activity"] == "rename"}
     assert renames == {
         "SCANNER_INBOX/ScanMerged0007.pdf": (
@@ -393,6 +454,8 @@ async def test_pair_merged_then_split_before_naming(temporal_env, tmp_path):
         "SCANNER_INBOX/ScanMerged0007.pdf": "renamed",
         "SCANNER_INBOX/Scan0009.pdf": "named_by_split",
     }
+    named_by_split = next(a for a in by_step["name"] if a["action"] == "named_by_split")
+    assert named_by_split["parts"] == ["Teil A.pdf", "Teil B.pdf"]
 
 
 async def test_dry_run_writes_nothing(temporal_env, tmp_path):
@@ -415,8 +478,10 @@ async def test_dry_run_writes_nothing(temporal_env, tmp_path):
     assert (
         name_actions[0]["to"] == "SCANNER_INBOX/2026-11-18 Rechnung Beispielpraxis.pdf"
     )
-    # the merged file is only planned in a dry run, so no split child for it
-    assert {s["action"] for s in by_step["split"]} == {"deferred"}
+    # split planned inline from the pair's texts (no SPLITME -> no_split);
+    # in a dry run no split child is spawned at all
+    assert {s["action"] for s in by_step["split"]} == {"no_split"}
+    assert all("result" not in s for s in by_step["split"])
 
 
 async def test_llm_rejects_pair_then_both_named_as_singles(temporal_env, tmp_path):
