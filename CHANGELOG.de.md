@@ -16,6 +16,8 @@ Einträge sind Einzeiler; der Pull-Request ist am Ende in Klammern manuell verli
 
 - Release- und Changelog-Prozess ist in `AGENTS.md` kodifiziert: Inhaltliche PRs, sechs Standardkategorien, dedizierter Release-PR, „Bump to Next Version“-Commit, annotierte Tags auf `main`, kein Dev-Suffix. ([#37](https://github.com/johkoenig/mistralai-workflows/pull/37))
 - Changelog-Einträge sind Einzeiler mit in Klammern gesetztem PR-Link; bestehende Einträge entsprechend überarbeitet. ([#37](https://github.com/johkoenig/mistralai-workflows/pull/37))
+- Pipeline-Speed-up (Roadmap-Punkt A): Text-Metadaten fließen aus dem `pdf-ocr`-Ergebnis durch den Orchestrator (kein erneuter Download pro Scan), die Split-Planung läuft inline und der `pdf-split`-Child wird nur bei bestätigtem Split gestartet. ([#36](https://github.com/johkoenig/mistralai-workflows/pull/36))
+- Backup-Loop und `name-document`-LLM-Calls im Orchestrator laufen jetzt parallel über den gemeinsamen Semaphor (Roadmap-Punkt B). ([#36](https://github.com/johkoenig/mistralai-workflows/pull/36))
 
 ### Deprecated
 

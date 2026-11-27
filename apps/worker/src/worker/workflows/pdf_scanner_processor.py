@@ -12,21 +12,25 @@ workflows in workflows/steps/ - each step is also directly triggerable on its ow
 
 1. Find new scans "Scan.pdf" / "ScanNNNN.pdf" and park a copy of each raw scan
    under <folder>/.originals/pdf-scanner-processor/ (before anything modifies it).
-2. Step pdf-ocr on the whole folder: PDFs without a text layer get OCR
-   (Tesseract deu+eng, deskew, page rotation); the result replaces the file in
-   Nextcloud (the step secures its own backup under .originals/pdf-ocr/).
-3. Detect front/back pairs: structural prefilter (consecutive scan order, same
-   page count, size ratio 0.5-2.0, both with text), then the LLM activity
-   front-back-check decides by content (acceptance >= 0.7). The detection is
-   name-independent: front and back of one duplex document can get completely
-   different names (date only on page 1, invoice spillover).
+2. Step pdf-ocr on the whole folder (with_pages_text=true): PDFs without a
+   text layer get OCR (Tesseract deu+eng, deskew, page rotation); the result
+   replaces the file in Nextcloud (the step secures its own backup under
+   .originals/pdf-ocr/). The step returns per file page count, has_text and
+   text snippets, so step 3 needs no second download.
+3. Detect front/back pairs from the OCR metadata (analyze-scan-file only as
+   fallback for uncovered files): structural prefilter (consecutive scan
+   order, same page count, size ratio 0.5-2.0, both with text), then the LLM
+   activity front-back-check decides by content (acceptance >= 0.7). The
+   detection is name-independent: front and back of one duplex document can
+   get completely different names (date only on page 1, invoice spillover).
 4. Step pdf-alternating-merge per confirmed pair with the intermediate title
    "ScanMerged<N>.pdf" (N = larger scan number of the pair). The sources are
    archived under .originals/pdf-alternating-merge/<target>/.
-5. Step pdf-split per unit - BEFORE naming: splitting is content-based, not
-   name-based, and the split step names its parts via the LLM itself, so a
-   pre-split name would be discarded anyway. It splits only when confident,
-   otherwise the file stays as it is.
+5. Split planning inline via the plan_split activity per unit - BEFORE naming:
+   splitting is content-based, not name-based, and the parts are named from
+   the plan, so a pre-split name would be discarded anyway. The pdf-split
+   child is spawned only when a split is actually confirmed, then with fixed
+   split_at + titles (no AI planning inside the child).
 6. Naming via name-document per unit that was NOT split (parts of split units
    are already named by pdf-split; merged pairs via combined text): the naming
    conventions come from the nearest AGENTS.md (the inbox folder or a parent
@@ -78,6 +82,7 @@ from worker.pdf_ops import (
     originals_dir,
     park_original,
     pick_url,
+    plan_split,
     scan_order,
     unique_filename,
 )
@@ -86,7 +91,11 @@ from worker.workflows.steps.pdf_alternating_merge import (
     PdfAlternatingMergeWorkflow,
 )
 from worker.workflows.steps.pdf_ocr import PdfOcrInput, PdfOcrWorkflow
-from worker.workflows.steps.pdf_split import PdfSplitInput, PdfSplitWorkflow
+from worker.workflows.steps.pdf_split import (
+    PdfSplitInput,
+    PdfSplitWorkflow,
+    resolve_plan,
+)
 
 # Default folder from the deployment (workspace secret, environment variable);
 # a folder_path given at start always takes precedence.
@@ -285,11 +294,18 @@ class PdfScannerProcessorWorkflow:
             }
 
         actions: list[dict[str, Any]] = []
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT_OCR)
 
-        # 1) Park the raw scans before anything modifies them (never in a dry run).
+        # 1) Park the raw scans before anything modifies them (never in a dry
+        #    run); parallel with the shared semaphore.
         if input.apply_changes:
-            for scan in scans:
-                backup = await backup_scan_file(scan["path"], connector)
+
+            async def backup_bounded(scan: dict[str, Any]) -> dict[str, Any]:
+                async with semaphore:
+                    return await backup_scan_file(scan["path"], connector)
+
+            backups = list(await asyncio.gather(*(backup_bounded(s) for s in scans)))
+            for scan, backup in zip(scans, backups, strict=True):
                 actions.append(
                     {
                         "step": "backup",
@@ -298,7 +314,8 @@ class PdfScannerProcessorWorkflow:
                     }
                 )
 
-        # 2) OCR the whole folder via the pdf-ocr step.
+        # 2) OCR the whole folder via the pdf-ocr step; it returns per-file
+        #    text metadata (with_pages_text) so step 3 needs no second download.
         ocr_result = await workflows.workflow.execute_workflow(
             STEPS["ocr"],
             PdfOcrInput(
@@ -306,20 +323,36 @@ class PdfScannerProcessorWorkflow:
                 recursive=False,
                 keep_original=True,
                 apply_changes=input.apply_changes,
+                with_pages_text=True,
                 connector=connector,
             ),
             execution_id=f"{run_id}-ocr",
         )
         actions.append({"step": "ocr", "result": ocr_result})
 
-        # 3) Analyze the scans (post-OCR, parallel) and detect front/back pairs.
-        semaphore = asyncio.Semaphore(MAX_CONCURRENT_OCR)
+        # 3) Text metadata comes from the pdf-ocr step result (no re-download);
+        #    analyze-scan-file only as fallback for scans the OCR step did not
+        #    cover. Then detect front/back pairs.
+        ocr_meta = {
+            action.get("path"): action
+            for action in ocr_result.get("actions", [])
+            if action.get("path")
+        }
 
-        async def analyze_bounded(scan: dict[str, Any]) -> dict[str, Any]:
+        async def metadata_bounded(scan: dict[str, Any]) -> dict[str, Any]:
+            action = ocr_meta.get(scan["path"])
+            if action and action.get("has_text") is not None and "text" in action:
+                return {
+                    **scan,
+                    "page_count": action.get("pages", 0),
+                    "has_text": action["has_text"],
+                    "text": action["text"],
+                    "pages_text": action.get("pages_text") or [action["text"]],
+                }
             async with semaphore:
                 return await analyze_scan_file(scan, connector)
 
-        analyzed = list(await asyncio.gather(*(analyze_bounded(s) for s in scans)))
+        analyzed = list(await asyncio.gather(*(metadata_bounded(s) for s in scans)))
 
         pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
         if input.merge_front_back:
@@ -362,6 +395,8 @@ class PdfScannerProcessorWorkflow:
                 "files": [item],
                 "path": item["path"],
                 "text": item["text"],
+                "page_count": item.get("page_count", 0),
+                "pages_text": item.get("pages_text") or [item.get("text", "")],
             }
             for item in analyzed
             if item["path"] not in paired_paths
@@ -420,6 +455,10 @@ class PdfScannerProcessorWorkflow:
                             "files": [first, second],
                             "path": merge_action["to"],
                             "text": merge_texts(first["text"], second["text"]),
+                            "page_count": first.get("page_count", 0)
+                            + second.get("page_count", 0),
+                            "pages_text": (first.get("pages_text") or [])
+                            + (second.get("pages_text") or []),
                         }
                     )
                 else:
@@ -431,83 +470,106 @@ class PdfScannerProcessorWorkflow:
                                 "files": [f],
                                 "path": f["path"],
                                 "text": f["text"],
+                                "page_count": f.get("page_count", 0),
+                                "pages_text": f.get("pages_text")
+                                or [f.get("text", "")],
                             }
                         )
 
-        # 5) Split per unit via the pdf-split step (parallel) - BEFORE naming:
-        #    splitting is content-based, not name-based, and the split step
-        #    names its parts via the LLM itself, so naming the pre-split file
-        #    first would be a wasted LLM call. The step splits only when
-        #    confident, otherwise the file stays as it is.
+        # 5) Split planning inline via the plan_split activity (parallel) - BEFORE
+        #    naming: splitting is content-based, not name-based, and the parts
+        #    are named from the plan, so naming the pre-split file first would be
+        #    a wasted LLM call. The pdf-split child is spawned only when a split
+        #    is actually confirmed (with fixed split_at + titles, so the child
+        #    does not plan again).
+        rules = (await load_naming_rules(folder, connector))["rules"]
         split_results: list[dict[str, Any]] = []
         if input.split_parts:
 
-            async def split_bounded(index: int, unit: dict[str, Any]) -> dict[str, Any]:
-                if unit["kind"] == "merged" and not input.apply_changes:
-                    # In a dry run the merged file is only planned, not created.
-                    return {
-                        "step": "split",
-                        "files": [f["name"] for f in unit["files"]],
-                        "target": unit["path"],
-                        "action": "deferred",
-                        "reason": "merged file is only planned in a dry run",
-                    }
+            async def plan_bounded(index: int, unit: dict[str, Any]) -> dict[str, Any]:
+                pages_text = unit.get("pages_text") or [unit.get("text", "")]
                 async with semaphore:
-                    handle = await workflows.workflow.execute_workflow(
-                        STEPS["split"],
-                        PdfSplitInput(
-                            target_path=unit["path"],
-                            apply_changes=input.apply_changes,
-                            model=input.model,
-                            connector=connector,
-                        ),
-                        execution_id=f"{run_id}-split-{index}",
-                        wait=False,
+                    plan = await plan_split(
+                        pages_text,
+                        unit.get("page_count", len(pages_text)),
+                        None,
+                        input.model,
+                        rules,
                     )
-                    result = await handle
-                return {
+                kind, details = resolve_plan(plan)
+                record: dict[str, Any] = {
                     "step": "split",
                     "files": [f["name"] for f in unit["files"]],
                     "target": unit["path"],
-                    "action": result.get("action"),
-                    "result": result,
+                    "action": kind,
+                    "plan": {
+                        "split_at": details.get("split_at", plan.get("split_at", [])),
+                        "titles": details.get("titles", plan.get("titles")),
+                        "confidence": plan.get("confidence", 0.0),
+                        "needs_input": plan.get("needs_input", False),
+                        "question": details.get("question") or plan.get("question"),
+                    },
                 }
+                spawn = kind == "split" and not (
+                    unit["kind"] == "merged" and not input.apply_changes
+                )
+                if spawn:
+                    # Confirmed split: hand the fixed plan to the pdf-split child.
+                    async with semaphore:
+                        handle = await workflows.workflow.execute_workflow(
+                            STEPS["split"],
+                            PdfSplitInput(
+                                target_path=unit["path"],
+                                split_at=details["split_at"],
+                                titles=details.get("titles"),
+                                apply_changes=input.apply_changes,
+                                model=input.model,
+                                connector=connector,
+                            ),
+                            execution_id=f"{run_id}-split-{index}",
+                            wait=False,
+                        )
+                        result = await handle
+                    record["action"] = result.get("action", kind)
+                    record["result"] = result
+                elif kind == "split":
+                    # Dry run, merged unit: the merged file is only planned, not
+                    # created, so no child - report the confirmed plan as planned.
+                    record["action"] = "planned"
+                return record
 
             split_results = list(
                 await asyncio.gather(
-                    *(split_bounded(i, unit) for i, unit in enumerate(units))
+                    *(plan_bounded(i, unit) for i, unit in enumerate(units))
                 )
             )
             actions.extend(split_results)
 
         # 6) Naming: LLM title + date per unit that was NOT split (merged pairs
-        #    via combined text; parts of split units are already named by the
-        #    pdf-split step). Rename only when confident.
-        rules = (await load_naming_rules(folder, connector))["rules"]
+        #    via combined text; parts of split units are named from the split
+        #    plan). LLM calls in parallel, unique-name assignment and renames
+        #    sequential. Rename only when confident.
         taken = set(listing["existing_names"])
         for unit in units:
             if unit["kind"] == "merged":
                 # str ops only: the workflow sandbox restricts os.path
                 taken.add(unit["path"].rsplit("/", 1)[-1])
-        for index, unit in enumerate(units):
-            split_action = split_results[index] if index < len(split_results) else None
+        name_units = [
+            unit
+            for index, unit in enumerate(units)
+            if not (
+                index < len(split_results)
+                and split_results[index].get("action") in ("split", "planned")
+            )
+        ]
+
+        async def name_bounded(unit: dict[str, Any]) -> dict[str, Any]:
+            async with semaphore:
+                return await name_document(unit["text"], input.model, rules)
+
+        namings = list(await asyncio.gather(*(name_bounded(u) for u in name_units)))
+        for unit, naming in zip(name_units, namings, strict=True):
             names = [f["name"] for f in unit["files"]]
-            if split_action and split_action.get("action") in ("split", "planned"):
-                parts = [
-                    str(part.get("to", "")).rsplit("/", 1)[-1]
-                    for part in (split_action.get("result") or {}).get("parts", [])
-                ]
-                actions.append(
-                    {
-                        "step": "name",
-                        "files": names,
-                        "action": "named_by_split",
-                        "path": unit["path"],
-                        "parts": parts,
-                    }
-                )
-                continue
-            naming = await name_document(unit["text"], input.model, rules)
             if naming["confidence"] < MIN_NAMING_CONFIDENCE or not naming["title"]:
                 actions.append(
                     {
@@ -548,5 +610,26 @@ class PdfScannerProcessorWorkflow:
                     "confidence": naming["confidence"],
                 }
             )
+        # Units that were split: their parts are already named from the split
+        # plan (named_by_split) - record that instead of renaming.
+        for index, unit in enumerate(units):
+            if index < len(split_results) and split_results[index].get("action") in (
+                "split",
+                "planned",
+            ):
+                split_result = split_results[index]
+                parts = [
+                    str(part.get("to", "")).rsplit("/", 1)[-1]
+                    for part in (split_result.get("result") or {}).get("parts", [])
+                ] or list(split_result.get("plan", {}).get("titles") or [])
+                actions.append(
+                    {
+                        "step": "name",
+                        "files": [f["name"] for f in unit["files"]],
+                        "action": "named_by_split",
+                        "path": unit["path"],
+                        "parts": parts,
+                    }
+                )
 
         return {"folder": folder, "applied": input.apply_changes, "actions": actions}
