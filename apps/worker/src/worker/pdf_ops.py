@@ -72,7 +72,9 @@ FRONT_BACK_MIN_CONFIDENCE = 0.7
 NAME_MAX_CHARS = 80
 MIN_NAMING_CONFIDENCE = 0.7
 # Memory guard: parallel OCR with -j 1 per file, uniform across all workflows.
-MAX_CONCURRENT_OCR = 2
+# Configurable via environment (same pattern as SCAN_INBOX_FOLDER), e.g. 3-4 on
+# stronger hardware; the default 2 protects small instances from OOM.
+MAX_CONCURRENT_OCR = int(os.environ.get("MAX_CONCURRENT_OCR", "2"))
 # Folder-specific naming rules (AGENTS.md): maximum number of characters loaded.
 NAMING_RULES_MAX_CHARS = 4000
 # Uniform storage location for secured originals of all workflows.

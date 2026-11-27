@@ -15,7 +15,7 @@ One repository, one managed deployment. The concrete parameters of the `mistrala
 | Build context | `.` |
 | Dockerfile | `deploy/docker/Dockerfile.worker` |
 | Hardened | `true` (mandatory, because all workflows use `on_behalf_of=True`) |
-| Secrets | `scan_inbox_folder` bound as environment variable `SCAN_INBOX_FOLDER`; `file_connector_names` bound as `FILE_CONNECTOR_NAMES` (comma-separated connector names, e.g. `<your-connector-name>`; default `nextcloud`) |
+| Secrets | `scan_inbox_folder` bound as environment variable `SCAN_INBOX_FOLDER`; optional environment variable `MAX_CONCURRENT_OCR` (parallel OCR/scan activities, default `2` — raise to 3-4 only on stronger hardware, it is the OOM guard); `file_connector_names` bound as `FILE_CONNECTOR_NAMES` (comma-separated connector names, e.g. `<your-connector-name>`; default `nextcloud`) |
 
 The worker image system-installs `ghostscript`, `tesseract-ocr-all`, and `jbig2dec` (package list: `deploy/docker/worker-packages/workflows.txt`).
 
