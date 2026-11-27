@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 Entries are one-liners; the pull request is linked manually in parentheses at the end. `Unreleased` carries no link definition (it would need updating on every push); released versions link to their tag or PR via the definitions at the bottom.
 
-## Unreleased
+## [0.4.0] - 2026-11-27
 
 ### Added
 
@@ -17,14 +17,6 @@ Entries are one-liners; the pull request is linked manually in parentheses at th
 ### Changed
 
 - `pdf-ocr` results carry `ocr_quality` (`confidence` / `low_confidence` / `metrics`) from the new `assess-ocr-quality` heuristic; the orchestrator flags weak OCR results as `low_confidence` in the run report (env knob `OCR_QUALITY_MIN_CONFIDENCE`, default `0.6`). ([#40](https://github.com/johkoenig/mistralai-workflows/pull/40))
-
-### Deprecated
-
-### Removed
-
-### Fixed
-
-### Security
 
 ## [0.3.0] - 2026-11-27
 
@@ -91,6 +83,7 @@ First public release of `mistralai-workflows` — Mistral workflows for scanner 
 
 The git history was squashed when the repository was recreated for publication; earlier PR references no longer resolve.
 
+[0.4.0]: https://github.com/johkoenig/mistralai-workflows/releases/tag/v0.4.0
 [0.3.0]: https://github.com/johkoenig/mistralai-workflows/releases/tag/v0.3.0
 [0.2.1]: https://github.com/johkoenig/mistralai-workflows/pull/27
 [0.2.0]: https://github.com/johkoenig/mistralai-workflows/compare/a2db23a...d2e3984
