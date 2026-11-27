@@ -39,9 +39,9 @@ Orchestrator over a scanner inbox folder (top folder level only): OCR, front/bac
 **Input**
 
 ```json
-{"folder_path": "/<scanner inbox>", "apply_changes": true, "model": "mistral-small-latest", "connector": "", "merge_front_back": true, "split_parts": true}
+{"folder_path": "/<scanner inbox>", "apply_changes": true, "model": "mistral-small-latest", "connector": "", "merge_front_back": true, "split_parts": true, "ocr_languages": "deu+eng"}
 ```
-(The workspace secret `SCAN_INBOX_FOLDER` (environment variable in the deployment) applies when `folder_path` is omitted; `model` selects the LLM for the checks and naming; `merge_front_back: false` skips the pair detection/merge, `split_parts: false` skips the split step — naming then runs on every unit directly.)
+(The workspace secret `SCAN_INBOX_FOLDER` (environment variable in the deployment) applies when `folder_path` is omitted; `model` selects the LLM for the checks and naming; `merge_front_back: false` skips the pair detection/merge, `split_parts: false` skips the split step. `ocr_languages` sets the OCR languages for the pdf-ocr child (default `deu+eng`; scanner-inbox runs can use `deu` to roughly halve OCR time) — naming then runs on every unit directly.)
 
 **Flow**: find `Scan.pdf` / `ScanNNNN.pdf` → park a copy of each raw scan under `.originals/pdf-scanner-processor/` → child `pdf-ocr` on the folder (`with_pages_text=true`; its own backups under `.originals/pdf-ocr/`; the result carries per-file page count, `has_text`, text snippet and per-page texts, so nothing is downloaded again) → detect front/back candidates (consecutive scan order, same page count, size factor 0.5-2.0, both with text) and confirm each candidate with the LLM activity `front-back-check` (accept at confidence >= 0.7; the check is name-independent, so front and back may look completely different) → child `pdf-alternating-merge` per confirmed pair with the intermediate title `ScanMerged<N>.pdf` (N = larger scan number of the pair; sources archived under `.originals/pdf-alternating-merge/<target>/`) → split planning INLINE per unit via the `plan-split` activity (BEFORE naming; content-based, parts are named from the plan) — the `pdf-split` child is spawned only when a split is actually confirmed, then with fixed `split_at` + `titles` → name every unit that was NOT split (`name-document` with the nearest AGENTS.md rules — inbox folder or a parent folder; merged pairs via the combined text; split parts are reported as `named_by_split`) → rename only when confident (>= 0.7), otherwise `left_unchanged`.
 
@@ -54,7 +54,7 @@ Alternating merge of duplex pairs, either directly via `pairs` in the start inpu
 **Input (variant A, direct)**
 
 ```json
-{"pairs": [{"front": "/folder/Doc Front.pdf", "back": "/folder/Doc Back.pdf", "title": "2026-01-15 Invoice A"}], "apply_changes": true, "model": "mistral-small-latest", "connector": ""}
+{"pairs": [{"front": "/folder/Doc Front.pdf", "back": "/folder/Doc Back.pdf", "title": "2026-01-15 Invoice A"}], "apply_changes": true, "model": "mistral-small-latest", "connector": "", "naming_rules": ""}
 ```
 
 **Input (variant B, control file)**
@@ -88,13 +88,14 @@ Splits a PDF into parts and names them; the parts stay in the folder of the orig
 **Input**
 
 ```json
-{"target_path": "/folder/document.pdf", "split_at": [2, 4], "plan_splits": true, "titles": null, "name_parts": true, "model": "mistral-small-latest", "apply_changes": true, "connector": ""}
+{"target_path": "/folder/document.pdf", "split_at": [2, 4], "plan_splits": true, "titles": null, "name_parts": true, "model": "mistral-small-latest", "apply_changes": true, "connector": "", "naming_rules": ""}
 ```
 
 - `split_at`: page numbers (1-based) AFTER which the PDF is cut — the given page stays in the previous part; always wins over planning. Example: `[2, 4]` on 8 pages yields parts 1-2, 3-4, 5-8. The same semantics are stated in the input schema (field description of `split_at`) and in the workflow description. A dry run (`apply_changes: false`) returns `action: "planned"` with the exact `pages` range of every part before anything is written.
 - `plan_splits` (default `true`): AI planning of the split points; `false` without `split_at` is an error.
 - `titles`: explicit part names (count must match); disable AI naming.
 - `name_parts` (default `true`): AI naming; `false` => `<stem> Teil-N.pdf`.
+- `naming_rules`: naming rules passed by a caller (e.g. the pdf-scanner-processor orchestrator); when empty, the workflow loads the nearest AGENTS.md itself.
 
 AI planning heuristics (in the split prompt): a NEW document is assumed when the date changes, when a (running) page number changes (e.g. a new 'Seite 1 von 2' / 'Page 1 of 2' run starts), or when a new company name / letterhead appears at the top of a page — a changed company or contract partner almost always means a new document (e.g. invoice). Exception: a company name that appears only because a third-party service was billed or passed through on someone else's behalf ('Fremdleistung im Namen von XY' / 'on behalf of XY') is NOT a new document. The model also verifies every planned boundary before finalizing and removes (merges back) boundaries that would cut through one coherent document.
 

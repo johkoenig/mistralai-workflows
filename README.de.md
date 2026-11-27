@@ -38,6 +38,7 @@ Alle vier werden **ausschließlich manuell** gestartet (Studio, Chat oder MCP `e
 | `split_at` | Explizite Trennstellen für `pdf-split`: Seitenzahlen (1-basiert), nach denen geschnitten wird | LLM-geplante Trennstellen |
 | `merge_front_back` | Orchestrator: Vorder-/Rückseiten-Paare erkennen und mischen | `true` |
 | `split_parts` | Orchestrator: Split-Step vor der Benennung auf jede Einheit anwenden | `true` |
+| `ocr_languages` | Orchestrator: OCR-Sprachen für den pdf-ocr-Child (Scanner-Eingang: `deu`) | `deu+eng` |
 | `apply_changes` | `false` = Dry-Run: alles wird gelesen, OCRed und geplant, geschrieben wird nichts | `true` |
 | `model` | LLM für Benennung, Planung und den Vorder-/Rückseiten-Check | `mistral-small-latest` |
 | `connector` | Datei-Connector aus `FILE_CONNECTOR_NAMES`, den dieser Aufruf ansprechen soll | Default-Connector |

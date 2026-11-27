@@ -107,6 +107,10 @@ class PdfSplitInput(pydantic.BaseModel):
     model: str = "mistral-small-latest"
     apply_changes: bool = True
     connector: str = ""
+    naming_rules: str = ""
+    """Naming rules passed by a caller (e.g. the pdf-scanner-processor
+    orchestrator, which already loaded the nearest AGENTS.md). When empty, the
+    workflow loads the nearest AGENTS.md itself as before (standalone use)."""
 
 
 def resolve_plan(plan: dict[str, Any]) -> tuple[str, dict[str, Any]]:
@@ -423,13 +427,17 @@ class PdfSplitWorkflow:
                 ),
             }
 
-        # Load naming rules only when the AI should name something.
+        # Load naming rules only when the AI should name something; rules passed
+        # by the caller win, standalone loading is the fallback.
         rules = ""
         if (split_at is None and input.plan_splits) or (
             split_at is not None and titles is None and input.name_parts
         ):
-            rules_doc = await load_naming_rules(loaded["parent"], connector)
-            rules = rules_doc["rules"]
+            if input.naming_rules.strip():
+                rules = input.naming_rules
+            else:
+                rules_doc = await load_naming_rules(loaded["parent"], connector)
+                rules = rules_doc["rules"]
 
         if split_at is None:
             # AI mode: let the LLM plan split points and titles.

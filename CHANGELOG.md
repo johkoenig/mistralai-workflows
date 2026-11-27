@@ -18,6 +18,9 @@ Entries are one-liners; the pull request is linked manually in parentheses at th
 - Changelog entries are one-liners with the PR linked in parentheses; existing entries reworked accordingly. ([#37](https://github.com/johkoenig/mistralai-workflows/pull/37))
 - Pipeline speed-up (roadmap point A): text metadata flows from the `pdf-ocr` result through the orchestrator (no re-download per scan), split planning runs inline and the `pdf-split` child is spawned only on a confirmed split. ([#36](https://github.com/johkoenig/mistralai-workflows/pull/36))
 - Orchestrator backup loop and `name-document` LLM calls now run in parallel via the shared semaphore (roadmap point B). ([#36](https://github.com/johkoenig/mistralai-workflows/pull/36))
+- Child workflows (`pdf-split`, `pdf-alternating-merge`) accept caller-provided `naming_rules`; the orchestrator passes its loaded rules down instead of re-downloading the AGENTS.md per child. ([#38](https://github.com/johkoenig/mistralai-workflows/pull/38))
+- New orchestrator input `ocr_languages` (default `deu+eng`) is passed to the `pdf-ocr` child; scanner-inbox runs can use `deu`. ([#38](https://github.com/johkoenig/mistralai-workflows/pull/38))
+- `MAX_CONCURRENT_OCR` is now an environment variable (default `2`, OOM guard). ([#38](https://github.com/johkoenig/mistralai-workflows/pull/38))
 
 ### Deprecated
 

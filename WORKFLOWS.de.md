@@ -39,12 +39,12 @@ Orchestrator über einen Scanner-Eingangsordner (nur erste Ordnerebene): OCR, Vo
 **Input**
 
 ```json
-{"folder_path": "/<Scanner-Eingang>", "apply_changes": true, "model": "mistral-small-latest", "connector": "", "merge_front_back": true, "split_parts": true}
+{"folder_path": "/<Scanner-Eingang>", "apply_changes": true, "model": "mistral-small-latest", "connector": "", "merge_front_back": true, "split_parts": true, "ocr_languages": "deu+eng"}
 ```
 
 - `folder_path`: Scanner-Eingang; fehlt er, gilt das Workspace-Secret `SCAN_INBOX_FOLDER` (Umgebungsvariable im Deployment).
 - `model`: LLM für die Prüfungen und die Benennung.
-- `merge_front_back: false` überspringt Paar-Erkennung/Mischen, `split_parts: false` überspringt den Split-Step — die Benennung läuft dann direkt auf jede Einheit.
+- `merge_front_back: false` überspringt Paar-Erkennung/Mischen, `split_parts: false` überspringt den Split-Step. `ocr_languages` setzt die OCR-Sprachen für den pdf-ocr-Child (Default `deu+eng`; Scanner-Eingangs-Läufe können `deu` setzen und so die OCR-Zeit etwa halbieren) — die Benennung läuft dann direkt auf jede Einheit.
 
 **Ablauf**: `Scan.pdf` / `ScanNNNN.pdf` finden → Kopie jedes Roh-Scans unter `.originals/pdf-scanner-processor/` parken → Child `pdf-ocr` auf den Ordner (`with_pages_text=true`; eigene Backups unter `.originals/pdf-ocr/`; das Ergebnis trägt pro Datei Seitenzahl, `has_text`, Textausschnitt und seitenweise Texte, es wird also nichts erneut heruntergeladen) → Kandidaten für Vorder-/Rückseiten-Paare (aufeinanderfolgende Scan-Reihenfolge, gleiche Seitenzahl, Größenfaktor 0.5-2.0, beide mit Textebene) per LLM-Activity `front-back-check` bestätigen (Annahme ab confidence >= 0.7; die Prüfung ist namensunabhängig, Vorder- und Rückseite dürfen also völlig anders aussehen) → Child `pdf-alternating-merge` pro bestätigtem Paar mit dem Zwischen-Titel `ScanMerged<N>.pdf` (N = größere Scan-Nummer des Paares; Quellen archiviert unter `.originals/pdf-alternating-merge/<Ziel>/`) → Split-Planung INLINE pro Einheit über die Activity `plan-split` (VOR der Benennung; inhaltsbasiert, Teile werden aus dem Plan benannt) — der `pdf-split`-Child wird nur bei tatsächlich bestätigtem Split gestartet, dann mit festem `split_at` + `titles` → jede nicht gesplittete Einheit benennen (`name-document` mit den nächstliegenden AGENTS.md-Regeln — Eingangsordner oder ein Elternordner; gemischte Paare über den kombinierten Text; Split-Teile werden als `named_by_split` reported) → nur bei sicherer Erkennung (>= 0.7) umbenennen, sonst `left_unchanged`.
 
@@ -57,7 +57,7 @@ Alternierendes Mischen von Duplex-Paaren, entweder direkt per `pairs` im Start-I
 **Input (Variante A, direkt)**
 
 ```json
-{"pairs": [{"front": "/Ordner/Dok Vorderseite.pdf", "back": "/Ordner/Dok Rueckseite.pdf", "title": "2026-01-15 Rechnung A"}], "apply_changes": true, "model": "mistral-small-latest", "connector": ""}
+{"pairs": [{"front": "/Ordner/Dok Vorderseite.pdf", "back": "/Ordner/Dok Rueckseite.pdf", "title": "2026-01-15 Rechnung A"}], "apply_changes": true, "model": "mistral-small-latest", "connector": "", "naming_rules": ""}
 ```
 
 **Input (Variante B, Steuerdatei)**
@@ -90,13 +90,14 @@ Teilt eine PDF in Teile und benennt sie; Teile bleiben im Ordner der Originaldat
 **Input**
 
 ```json
-{"target_path": "/Ordner/Dokument.pdf", "split_at": [2, 4], "plan_splits": true, "titles": null, "name_parts": true, "model": "mistral-small-latest", "apply_changes": true, "connector": ""}
+{"target_path": "/Ordner/Dokument.pdf", "split_at": [2, 4], "plan_splits": true, "titles": null, "name_parts": true, "model": "mistral-small-latest", "apply_changes": true, "connector": "", "naming_rules": ""}
 ```
 
 - `split_at`: Seitenzahlen (1-basiert), NACH denen getrennt wird — die angegebene Seite bleibt im vorherigen Teil; gewinnt immer über die Planung. Beispiel: `[2, 4]` bei 8 Seiten ergibt die Teile 1-2, 3-4, 5-8. Dieselbe Semantik steht in der Input-Schema-Beschreibung des Feldes `split_at` und in der Workflow-Beschreibung. Ein Dry-Run (`apply_changes: false`) liefert `action: "planned"` mit dem genauen `pages`-Bereich jedes Teils, bevor etwas geschrieben wird.
 - `plan_splits` (Standard `true`): AI-Planung der Trennstellen; `false` ohne `split_at` ist ein Fehler.
 - `titles`: explizite Teilnamen (Anzahl muss passen); schalten die AI-Benennung ab.
 - `name_parts` (Standard `true`): AI-Benennung; `false` => `<Stamm> Teil-N.pdf`.
+- `naming_rules`: vom Caller übergebene Benennungsregeln (z. B. vom Orchestrator pdf-scanner-processor); leer = die nächstliegende AGENTS.md wird selbst geladen.
 
 Heuristiken der AI-Planung (im Split-Prompt): Ein NEUES Dokument wird angenommen, wenn sich das Datum ändert, wenn sich eine (laufende) Seitenzahl ändert (z. B. ein neuer Lauf 'Seite 1 von 2' beginnt) oder wenn oben auf einer Seite ein neuer Firmenname/Briefkopf steht — eine geänderte Firma oder ein geänderter Vertragspartner bedeutet fast immer ein neues Dokument (z. B. Rechnung). Ausnahme: Ein Firmenname, der nur erscheint, weil eine Fremdleistung im Namen von jemandem abgerechnet oder durchgerechnet wurde ('Fremdleistung im Namen von XY' / 'on behalf of XY'), ist KEIN neues Dokument. Das Modell prüft außerdem jede geplante Trennstelle vor dem Finalisieren und entfernt Trennstellen (führt betroffene Teile wieder zusammen), die mitten durch ein kohärentes Dokument schneiden würden.
 

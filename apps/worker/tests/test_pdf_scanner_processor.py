@@ -54,6 +54,7 @@ class FakeOcrStep:
             "target": input.target_path,
             "kind": "folder",
             "applied": input.apply_changes,
+            "languages": input.languages,
             "actions": actions,
         }
 
@@ -74,6 +75,7 @@ class FakeMergeStep:
                     "back": pair.get("back"),
                     "action": "merged" if input.apply_changes else "planned",
                     "to": f"{folder}/{title}",
+                    "naming_rules_seen": input.naming_rules,
                 }
             )
         return {
@@ -102,6 +104,7 @@ class FakeSplitStep:
             "applied": input.apply_changes and bool(split_at),
             "action": "split" if input.apply_changes else "planned",
             "parts": parts,
+            "naming_rules_seen": input.naming_rules,
         }
 
 
@@ -290,7 +293,8 @@ def _make_fakes(
 
     @workflows.activity(name="load-naming-rules")
     async def fake_rules(folder: str, connector: str = "") -> dict[str, Any]:
-        return {"rules": "", "source": None}
+        _write_calls(record_path, {"activity": "rules", "folder": folder})
+        return {"rules": "FAKE_RULES", "source": "AGENTS.md"}
 
     @workflows.activity(name="backup-scan-file")
     async def fake_backup(from_path: str, connector: str = "") -> dict[str, Any]:
@@ -582,3 +586,21 @@ def test_step_registry_points_at_the_step_workflows():
         for cls in pdf_scanner_processor.STEPS.values()
     }
     assert names == {"pdf-ocr", "pdf-alternating-merge", "pdf-split"}
+
+
+async def test_orchestrator_passes_ocr_languages_and_naming_rules_to_children(
+    temporal_env, tmp_path
+):
+    # D: ocr_languages reaches the pdf-ocr child; C: the loaded naming rules are
+    # passed to the pdf-split child instead of re-loading the AGENTS.md there.
+    scans = [_file("Scan0001.pdf", 1, size=1000, page_count=2, text=SPLITTABLE)]
+    result, calls = await _run_processor(
+        temporal_env, tmp_path, scans, NAMING, FRONT_BACK_NO, ocr_languages="deu"
+    )
+    by_step = _by_step(result)
+    assert by_step["ocr"][0]["result"]["languages"] == "deu"
+    split = by_step["split"][0]
+    assert split["action"] == "split"  # SPLITTABLE -> confirmed, child spawned
+    assert split["result"]["naming_rules_seen"] == "FAKE_RULES"
+    # rules were loaded exactly once (by the orchestrator), not per child
+    assert len([c for c in calls if c["activity"] == "rules"]) == 1

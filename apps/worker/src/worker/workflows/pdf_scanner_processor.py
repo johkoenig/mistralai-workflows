@@ -59,7 +59,7 @@ import pydantic
 from mistralai import workflows
 from mistralai.workflows.plugins.mistralai.connectors import uses_connectors
 
-from worker.ocr import read_text_info, run_with_heartbeat
+from worker.ocr import OCR_LANGUAGES, read_text_info, run_with_heartbeat
 from worker.pdf_ops import (
     DEFAULT_FILE_CONNECTOR,
     FILE_CONNECTOR_NAMES,
@@ -116,6 +116,9 @@ class PdfScannerProcessorInput(pydantic.BaseModel):
     connector: str = ""
     merge_front_back: bool = True
     split_parts: bool = True
+    ocr_languages: str = OCR_LANGUAGES
+    """OCR languages for the pdf-ocr child (Tesseract codes, default deu+eng;
+    scanner-inbox runs can set deu to roughly halve OCR time)."""
 
 
 # Step workflows of the pipeline, called as child workflows; tests substitute
@@ -324,6 +327,7 @@ class PdfScannerProcessorWorkflow:
                 keep_original=True,
                 apply_changes=input.apply_changes,
                 with_pages_text=True,
+                languages=input.ocr_languages,
                 connector=connector,
             ),
             execution_id=f"{run_id}-ocr",
@@ -353,6 +357,10 @@ class PdfScannerProcessorWorkflow:
                 return await analyze_scan_file(scan, connector)
 
         analyzed = list(await asyncio.gather(*(metadata_bounded(s) for s in scans)))
+
+        # Naming rules are loaded once here and passed to the child workflows
+        # (naming_rules), so they do not re-download the AGENTS.md per child.
+        rules = (await load_naming_rules(folder, connector))["rules"]
 
         pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
         if input.merge_front_back:
@@ -422,6 +430,7 @@ class PdfScannerProcessorWorkflow:
                             apply_changes=input.apply_changes,
                             model=input.model,
                             connector=connector,
+                            naming_rules=rules,
                         ),
                         execution_id=f"{run_id}-merge-{index}",
                         wait=False,
@@ -482,7 +491,6 @@ class PdfScannerProcessorWorkflow:
         #    a wasted LLM call. The pdf-split child is spawned only when a split
         #    is actually confirmed (with fixed split_at + titles, so the child
         #    does not plan again).
-        rules = (await load_naming_rules(folder, connector))["rules"]
         split_results: list[dict[str, Any]] = []
         if input.split_parts:
 
@@ -525,6 +533,7 @@ class PdfScannerProcessorWorkflow:
                                 apply_changes=input.apply_changes,
                                 model=input.model,
                                 connector=connector,
+                                naming_rules=rules,
                             ),
                             execution_id=f"{run_id}-split-{index}",
                             wait=False,

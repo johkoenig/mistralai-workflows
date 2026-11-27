@@ -185,3 +185,32 @@ def test_split_prompt_contains_document_boundary_heuristics():
     assert "company name" in prompt and "contract partner" in prompt
     assert "im Namen von XY" in prompt and "on behalf of XY" in prompt
     assert "Verify every planned boundary" in prompt
+
+
+def test_max_concurrent_ocr_env_override():
+    import os
+    import subprocess
+    import sys
+
+    code = "from worker import pdf_ops; print(pdf_ops.MAX_CONCURRENT_OCR)"
+    env = dict(os.environ)
+    env["MAX_CONCURRENT_OCR"] = "4"
+    out = subprocess.run(
+        [sys.executable, "-c", code],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "4"
+    env.pop("MAX_CONCURRENT_OCR")
+    out = subprocess.run(
+        [sys.executable, "-c", code],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "2"
