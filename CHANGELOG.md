@@ -8,9 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 Entries are one-liners; the pull request is linked manually in parentheses at the end. `Unreleased` carries no link definition (it would need updating on every push); released versions link to their tag or PR via the definitions at the bottom.
 
-## Unreleased
-
-### Added
+## [0.3.0] - 2026-11-27
 
 ### Changed
 
@@ -21,14 +19,6 @@ Entries are one-liners; the pull request is linked manually in parentheses at th
 - Child workflows (`pdf-split`, `pdf-alternating-merge`) accept caller-provided `naming_rules`; the orchestrator passes its loaded rules down instead of re-downloading the AGENTS.md per child. ([#38](https://github.com/johkoenig/mistralai-workflows/pull/38))
 - New orchestrator input `ocr_languages` (default `deu+eng`) is passed to the `pdf-ocr` child; scanner-inbox runs can use `deu`. ([#38](https://github.com/johkoenig/mistralai-workflows/pull/38))
 - `MAX_CONCURRENT_OCR` is now an environment variable (default `2`, OOM guard). ([#38](https://github.com/johkoenig/mistralai-workflows/pull/38))
-
-### Deprecated
-
-### Removed
-
-### Fixed
-
-### Security
 
 ## [0.2.1] - 2026-11-24
 
@@ -83,6 +73,7 @@ First public release of `mistralai-workflows` — Mistral workflows for scanner 
 
 The git history was squashed when the repository was recreated for publication; earlier PR references no longer resolve.
 
+[0.3.0]: https://github.com/johkoenig/mistralai-workflows/releases/tag/v0.3.0
 [0.2.1]: https://github.com/johkoenig/mistralai-workflows/pull/27
 [0.2.0]: https://github.com/johkoenig/mistralai-workflows/compare/a2db23a...d2e3984
 [0.1.0]: https://github.com/johkoenig/mistralai-workflows/tree/a2db23a

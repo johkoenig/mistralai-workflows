@@ -8,9 +8,7 @@ Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), und d
 
 Einträge sind Einzeiler; der Pull-Request ist am Ende in Klammern manuell verlinkt. `Unreleased` trägt keine Link-Definition (die müsste bei jedem Push aktualisiert werden); freigegebene Versionen verlinken über die Definitionen am Dateiende auf Tag oder PR.
 
-## Unreleased
-
-### Added
+## [0.3.0] - 2026-11-27
 
 ### Changed
 
@@ -18,14 +16,6 @@ Einträge sind Einzeiler; der Pull-Request ist am Ende in Klammern manuell verli
 - Changelog-Einträge sind Einzeiler mit in Klammern gesetztem PR-Link; bestehende Einträge entsprechend überarbeitet. ([#37](https://github.com/johkoenig/mistralai-workflows/pull/37))
 - Pipeline-Speed-up (Roadmap-Punkt A): Text-Metadaten fließen aus dem `pdf-ocr`-Ergebnis durch den Orchestrator (kein erneuter Download pro Scan), die Split-Planung läuft inline und der `pdf-split`-Child wird nur bei bestätigtem Split gestartet. ([#36](https://github.com/johkoenig/mistralai-workflows/pull/36))
 - Backup-Loop und `name-document`-LLM-Calls im Orchestrator laufen jetzt parallel über den gemeinsamen Semaphor (Roadmap-Punkt B). ([#36](https://github.com/johkoenig/mistralai-workflows/pull/36))
-
-### Deprecated
-
-### Removed
-
-### Fixed
-
-### Security
 
 ## [0.2.1] - 2026-11-24
 
@@ -80,6 +70,7 @@ Erstes öffentliches Release von `mistralai-workflows` — Mistral-Workflows fü
 
 Die Git-Historie wurde bei der Neuerstellung des Repositories für die Veröffentlichung auf einen Commit squasht; frühere PR-Referenzen lösen nicht mehr auf.
 
+[0.3.0]: https://github.com/johkoenig/mistralai-workflows/releases/tag/v0.3.0
 [0.2.1]: https://github.com/johkoenig/mistralai-workflows/pull/27
 [0.2.0]: https://github.com/johkoenig/mistralai-workflows/compare/a2db23a...d2e3984
 [0.1.0]: https://github.com/johkoenig/mistralai-workflows/tree/a2db23a
