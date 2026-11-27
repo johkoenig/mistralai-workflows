@@ -83,3 +83,6 @@ Die Git-Historie wurde bei der Neuerstellung des Repositories für die Veröffen
 [0.2.1]: https://github.com/johkoenig/mistralai-workflows/pull/27
 [0.2.0]: https://github.com/johkoenig/mistralai-workflows/compare/a2db23a...d2e3984
 [0.1.0]: https://github.com/johkoenig/mistralai-workflows/tree/a2db23a
+- Child-Workflows (`pdf-split`, `pdf-alternating-merge`) akzeptieren caller-übergebene `naming_rules`; der Orchestrator reicht seine geladenen Regeln weiter, statt die AGENTS.md pro Child neu zu laden. ([#38](https://github.com/johkoenig/mistralai-workflows/pull/38))
+- Neues Orchestrator-Input `ocr_languages` (Default `deu+eng`) wird an den `pdf-ocr`-Child durchgereicht; Scanner-Eingangs-Läufe können `deu` nutzen. ([#38](https://github.com/johkoenig/mistralai-workflows/pull/38))
+- `MAX_CONCURRENT_OCR` ist jetzt eine Umgebungsvariable (Default `2`, OOM-Schutz). ([#38](https://github.com/johkoenig/mistralai-workflows/pull/38))
