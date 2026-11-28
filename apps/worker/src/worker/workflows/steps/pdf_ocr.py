@@ -217,7 +217,7 @@ async def _process_file_inner(
             return report
 
         out_path = os.path.join(workdir, "ocr.pdf")
-        run = await run_ocrmypdf(local, out_path, languages=languages)
+        run = await run_ocrmypdf(local, out_path, languages=languages, force=force)
         if not run["ok"]:
             report["action"] = "error"
             report["error"] = run["error"]

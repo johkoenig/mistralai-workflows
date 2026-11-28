@@ -98,6 +98,8 @@ def build_ocr_command(
     rotate: bool = True,
     deskew: bool = True,
     jobs: str = OCR_JOBS,
+    *,
+    force: bool = False,
 ) -> list[str]:
     """Build the ocrmypdf invocation; rotate and deskew are options of the same pass."""
     command = ["ocrmypdf", "-l", languages, "--output-type", "pdf", "-j", jobs, "-q"]
@@ -105,6 +107,8 @@ def build_ocr_command(
         command += ["--rotate-pages", "--rotate-pages-threshold", OCR_ROTATE_THRESHOLD]
     if deskew:
         command += ["--deskew"]
+    if force:
+        command += ["--mode", "force"]
     command += [input_path, output_path]
     return command
 
@@ -152,10 +156,12 @@ async def run_ocrmypdf(
     deskew: bool = True,
     jobs: str = OCR_JOBS,
     timeout_s: int = OCR_SUBPROCESS_TIMEOUT_S,
+    *,
+    force: bool = False,
 ) -> dict[str, Any]:
     """OCRmyPDF run with heartbeats; returns {"ok": bool, "error": ...}."""
     command = build_ocr_command(
-        input_path, output_path, languages, rotate, deskew, jobs
+        input_path, output_path, languages, rotate, deskew, jobs, force=force
     )
     base = os.path.basename(input_path)
     logger.info(

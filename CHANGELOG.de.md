@@ -20,6 +20,7 @@ Einträge sind Einzeiler; der Pull-Request ist am Ende in Klammern manuell verli
 
 ### Fixed
 
+- `pdf-ocr` verarbeitet PDFs mit vorhandener Textebene erneut, wenn `force: true` gesetzt ist. ([#45](https://github.com/johkoenig/mistralai-workflows/pull/45))
 - `pdf-vision` läuft jetzt mit `on_behalf_of=True` wie alle anderen Workflows; ohne OBO schlug die Connector-Auflösung auf dem Managed Deployment mit 404 fehl. ([#42](https://github.com/johkoenig/mistralai-workflows/pull/42))
 
 ### Security
