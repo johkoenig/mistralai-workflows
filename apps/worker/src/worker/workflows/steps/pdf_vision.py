@@ -229,6 +229,8 @@ def _write_metadata_flag(pdf_path: str, out_path: str, flag: dict[str, Any]) -> 
         "processing flag in the PDF metadata (model, confidence, date). The "
         "searchable text layer is never replaced. Dry run via apply_changes=false."
     ),
+    on_behalf_of=True,
+    execution_timeout=timedelta(hours=3),
 )
 @uses_connectors(*file_connectors.values())
 class PdfVisionWorkflow:
