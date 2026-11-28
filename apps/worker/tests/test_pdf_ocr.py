@@ -3,8 +3,11 @@
 import json
 from datetime import timedelta
 from pathlib import Path
+from shutil import copyfile
 from typing import Any
+from unittest.mock import AsyncMock
 
+from fpdf import FPDF
 from mistralai import workflows
 from mistralai.workflows.testing import create_test_worker
 from worker import ocr, pdf_ops
@@ -108,6 +111,49 @@ class TestBackupHelpers:
         assert "--deskew" not in cmd
         assert "--rotate-pages" not in cmd
         assert "--rotate-pages-threshold" not in cmd
+
+
+async def test_force_dry_run_reprocesses_an_existing_text_layer(tmp_path, monkeypatch):
+    input_pdf = tmp_path / "text.pdf"
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", size=12)
+    pdf.cell(text="Existing text layer")
+    pdf.output(input_pdf)
+
+    checkout = AsyncMock(
+        return_value={"download_url": "https://example.invalid/text.pdf"}
+    )
+
+    async def fake_download(_http_get, _url, local, **_kwargs):
+        copyfile(input_pdf, local)
+
+    commands = []
+
+    async def fake_ocr(input_path, output_path, **kwargs):
+        command = ocr.build_ocr_command(input_path, output_path, **kwargs)
+        commands.append(command)
+        if "--mode" not in command:
+            return {"ok": False, "error": "document already has a text layer"}
+        copyfile(input_path, output_path)
+        return {"ok": True}
+
+    monkeypatch.setattr(pdf_ocr, "nc_call", checkout)
+    monkeypatch.setattr(pdf_ocr, "run_with_heartbeat", fake_download)
+    monkeypatch.setattr(pdf_ocr, "run_ocrmypdf", fake_ocr)
+    entry = {"name": input_pdf.name, "path": "/incoming/text.pdf"}
+    result = await pdf_ocr._process_file_inner(
+        entry,
+        force=True,
+        keep_original=True,
+        apply_changes=False,
+        languages="eng",
+        nc=_FakeNC(),
+    )
+
+    assert result["action"] == "planned"
+    assert commands[0][commands[0].index("--mode") + 1] == "force"
+    assert [call.args[1] for call in checkout.await_args_list] == ["files_checkout"]
 
 
 def _write_calls(record_path: str, entry: dict) -> None:

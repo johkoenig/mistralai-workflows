@@ -20,6 +20,7 @@ Entries are one-liners; the pull request is linked manually in parentheses at th
 
 ### Fixed
 
+- `pdf-ocr` now reprocesses PDFs with an existing text layer when `force: true` is set. ([#43](https://github.com/johkoenig/mistralai-workflows/issues/43))
 - `pdf-vision` now runs `on_behalf_of=True` like all other workflows; without it the connector resolve failed with 404 on the managed deployment. ([#42](https://github.com/johkoenig/mistralai-workflows/pull/42))
 
 ### Security
